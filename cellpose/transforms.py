@@ -6,11 +6,13 @@ import logging
 transforms_logger = logging.getLogger(__name__)
 
 from . import dynamics, utils
+
 try:
     import omnipose, edt, fastremap
     OMNI_INSTALLED = True
 except:
     OMNI_INSTALLED = False
+    print('OMNIPOSE NOT INSTALLED')
 
 def _taper_mask(ly=224, lx=224, sig=7.5):
     bsize = max(224, max(ly, lx))
@@ -222,7 +224,7 @@ def move_axis(img, m_axis=-1, first=True):
 # transposed to (x,y) if x<y, making the labels no longer correspond to the data. 
 def move_min_dim(img, force=False):
     """ move minimum dimension last as channels if < 10, or force==True """
-    if len(img.shape) > 2: #only makese sense to do this if channel axis is already present 
+    if len(img.shape) > 2: #only makese sense to do this if channel axis is already present, not best for 3D though! 
         min_dim = min(img.shape)
         if min_dim < 10 or force:
             if img.shape[-1]==min_dim:
@@ -249,7 +251,7 @@ def update_axis(m_axis, to_squeeze, ndim):
 
 def convert_image(x, channels, channel_axis=None, z_axis=None,
                   do_3D=False, normalize=True, invert=False,
-                  nchan=2, omni=False):
+                  nchan=2, dim=2, omni=False):
     """ return image with z first, channels last and normalized intensities """
         
     # squeeze image, and if channel_axis or z_axis given, transpose image
@@ -260,7 +262,7 @@ def convert_image(x, channels, channel_axis=None, z_axis=None,
             channel_axis = update_axis(channel_axis, to_squeeze, x.ndim) if channel_axis is not None else channel_axis
             z_axis = update_axis(z_axis, to_squeeze, x.ndim) if z_axis is not None else z_axis
         x = x.squeeze()
-
+    # print('shape00',x.shape)
     # put z axis first
     if z_axis is not None and x.ndim > 2:
         x = move_axis(x, m_axis=z_axis, first=True)
@@ -268,12 +270,14 @@ def convert_image(x, channels, channel_axis=None, z_axis=None,
             channel_axis += 1
         if x.ndim==3:
             x = x[...,np.newaxis]
-        
+    # print('shape01',x.shape)
     # put channel axis last
     if channel_axis is not None and x.ndim > 2:
         x = move_axis(x, m_axis=channel_axis, first=False)
-    elif x.ndim == 2:
-        x = x[:,:,np.newaxis]
+    elif x.ndim == dim:
+        x = x[...,np.newaxis]
+    
+    # print('shape02',x.shape)
 
     if do_3D :
         if x.ndim < 3:
@@ -282,8 +286,13 @@ def convert_image(x, channels, channel_axis=None, z_axis=None,
         elif x.ndim<4:
             x = x[...,np.newaxis]
 
+    # print('shape03',x.shape)
+    
+    # this one must be the cuplrit... no, in fact it is not 
     if channel_axis is None:
         x = move_min_dim(x)
+
+    # print('shape04',x.shape)
         
     if x.ndim > 3:
         transforms_logger.info('multi-stack tiff read in as having %d planes %d channels'%
@@ -295,14 +304,16 @@ def convert_image(x, channels, channel_axis=None, z_axis=None,
             transforms_logger.critical('ERROR: two channels not specified')
             raise ValueError('ERROR: two channels not specified') 
         x = reshape(x, channels=channels)
-        
+        # print('AAA',x.shape,channels)
     else:
-        # code above put channels last
-        if x.shape[-1] > nchan:
+        # print('BBB',do_3D,x.ndim,x.shape,nchan)
+        # code above put channels last, so its making sure nchan matches below
+        # not sure when this condition would be met, but it conflicts with 3D
+        if x.shape[-1] > nchan and x.ndim>dim:
             transforms_logger.warning('WARNING: more than %d channels given, use "channels" input for specifying channels - just using first %d channels to run processing'%(nchan,nchan))
             x = x[...,:nchan]
-
-        if not do_3D and x.ndim>3:
+        
+        if not do_3D and x.ndim>3 and dim==2: # error should only be thrown for 2D mode 
             transforms_logger.critical('ERROR: cannot process 4D images in 2D mode')
             raise ValueError('ERROR: cannot process 4D images in 2D mode')
             
@@ -316,7 +327,7 @@ def convert_image(x, channels, channel_axis=None, z_axis=None,
         
     return x
 
-def reshape(data, channels=[0,0], chan_first=False):
+def reshape(data, channels=[0,0], chan_first=False, channel_axis=0):
     """ reshape data using channels
 
     Parameters
@@ -340,20 +351,21 @@ def reshape(data, channels=[0,0], chan_first=False):
 
     """
     data = data.astype(np.float32)
-    if data.ndim < 3:
-        data = data[:,:,np.newaxis]
-    elif data.shape[0]<8 and data.ndim==3:
+    if data.ndim < 3: # plain 2D images get a new channel azis 
+        data = data[...,np.newaxis]
+    elif data.shape[0]<8 and data.ndim==3: # Assume stack of this sort ar nchan x Ly x Lx, so reorder to Ly x Lx x nchan 
         data = np.transpose(data, (1,2,0))
-
     # use grayscale image
     if data.shape[-1]==1:
         data = np.concatenate((data, np.zeros_like(data)), axis=-1)
     else:
         if channels[0]==0:
-            data = data.mean(axis=-1, keepdims=True)
-            data = np.concatenate((data, np.zeros_like(data)), axis=-1)
+            # data = data.mean(axis=-1, keepdims=True) # why do this? Seems like it would be smashing channels together instead of taking the 0th one. 
+            data = data.mean(axis=channel_axis, keepdims=True) # also had a big bug: 3D volumes get squashed to 2D along x axis!!! Assumptions bad. 
+            
+            data = np.concatenate((data, np.zeros_like(data)), axis=-1) # forces images to always have 2 channels, possibly bad for multidimensional pytorch limitations 
         else:
-            chanid = [channels[0]-1]
+            chanid = [channels[0]-1] # oh so [0,0] would do a mean and [1,0] would actually take the first channel?
             if channels[1] > 0:
                 chanid.append(channels[1]-1)
             data = data[...,chanid]
@@ -401,18 +413,14 @@ def normalize_img(img, axis=-1, invert=False, omni=False):
     img = np.moveaxis(img, axis, 0)
     for k in range(img.shape[0]):
         # ptp can still give nan's with weird images
-        i99 = np.percentile(img[k],99)
-        i1 = np.percentile(img[k],1)
-        if i99 - i1 > +1e-3: #np.ptp(img[k]) > 1e-3:
+        if np.percentile(img[k],99) > np.percentile(img[k],1)+1e-3: #np.ptp(img[k]) > 1e-3:
             img[k] = normalize99(img[k],omni=omni)
             if invert:
                 img[k] = -1*img[k] + 1   
-        else:
-            img[k] = 0
     img = np.moveaxis(img, 0, axis)
     return img
 
-def reshape_train_test(train_data, train_labels, test_data, test_labels, channels, normalize=True, omni=False):
+def reshape_train_test(train_data, train_labels, test_data, test_labels, channels, channel_axis=0, normalize=True, dim=2, omni=False):
     """ check sizes and reshape train and test data for training """
     nimg = len(train_data)
     # check that arrays are correct size
@@ -438,9 +446,13 @@ def reshape_train_test(train_data, train_labels, test_data, test_labels, channel
             len(test_data) > 0 and len(test_data)==len(test_labels)):
         test_data = None
 
+#     print('reshape_train_test',train_data[0].shape,channels,normalize,omni)
     # make data correct shape and normalize it so that 0 and 1 are 1st and 99th percentile of data
+    # reshape_and_normalize_data pads the train_data with an eplty channel axis if it doesn't have one (single channel images/volumes). 
     train_data, test_data, run_test = reshape_and_normalize_data(train_data, test_data=test_data, 
-                                                                 channels=channels, normalize=normalize, omni=omni)
+                                                                 channels=channels, channel_axis=channel_axis,
+                                                                 normalize=normalize, omni=omni)
+    # print('reshape_train_test_2',train_data[0].shape)
 
     if train_data is None:
         error_message = 'training data do not all have the same number of channels'
@@ -453,7 +465,7 @@ def reshape_train_test(train_data, train_labels, test_data, test_labels, channel
 
     return train_data, train_labels, test_data, test_labels, run_test
 
-def reshape_and_normalize_data(train_data, test_data=None, channels=None, normalize=True, omni=False):
+def reshape_and_normalize_data(train_data, test_data=None, channels=None, channel_axis=0, normalize=True, omni=False):
     """ inputs converted to correct shapes for *training* and rescaled so that 0.0=1st percentile
     and 1.0=99th percentile of image intensities in each channel
 
@@ -495,16 +507,28 @@ def reshape_and_normalize_data(train_data, test_data=None, channels=None, normal
         if data is None:
             return train_data, test_data, run_test
         nimg = len(data)
+        # print('reshape_and_normalize_data',nimg,channels,data[0].shape)
         for i in range(nimg):
-            data[i] = move_min_dim(data[i], force=True)
             if channels is not None:
-                data[i] = reshape(data[i], channels=channels, chan_first=True)
-            if data[i].ndim < 3:
-                data[i] = data[i][np.newaxis,:,:]
+                data[i] = move_min_dim(data[i], force=True) ## consider changign this to just use the channel_axis, not min dim 
+            # print('3454354',data[i].shape)
+            if channels is not None:
+                data[i] = reshape(data[i], channels=channels, chan_first=True, channel_axis=channel_axis) # the cuplrit with 3D
+                # print('fgddgfgdfg',data[i].shape)
+
+            # if data[i].ndim < 3:
+            #     data[i] = data[i][np.newaxis,:,:]
+            # we actually want this padding for single-channel volumes too
+            if channels is None: # data with multiple channels will have channels defined and have an axis already; could also pass in nchan to avoid this assumption 
+                data[i] = data[i][np.newaxis]
+            
+            # instead of this, we could just make the other parts of the code not rely on a channel axis and slice smarter 
+            
             if normalize:
                 data[i] = normalize_img(data[i], axis=0, omni=omni)
         nchan = [data[i].shape[0] for i in range(nimg)]
     run_test = True
+    # print('reshape_and_normalize_data_2',nimg,channels,data[0].shape,train_data[0].shape) why won't this print 
     return train_data, test_data, run_test
 
 def resize_image(img0, Ly=None, Lx=None, rsz=None, interpolation=cv2.INTER_LINEAR, no_channels=False):
@@ -561,7 +585,7 @@ def resize_image(img0, Ly=None, Lx=None, rsz=None, interpolation=cv2.INTER_LINEA
         imgs = cv2.resize(img0, (Lx, Ly), interpolation=interpolation)
     return imgs
 
-def pad_image_ND(img0, div=16, extra = 1):
+def pad_image_ND(img0, div=16, extra=1, dim=2):
     """ pad image for test-time so that its dimensions are a multiple of 16 (2D or 3D)
 
     Parameters
@@ -585,29 +609,48 @@ def pad_image_ND(img0, div=16, extra = 1):
         xrange of pixels in I corresponding to img0
 
     """
-    Lpad = int(div * np.ceil(img0.shape[-2]/div) - img0.shape[-2])
-    xpad1 = extra*div//2 + Lpad//2
-    xpad2 = extra*div//2 + Lpad - Lpad//2
-    Lpad = int(div * np.ceil(img0.shape[-1]/div) - img0.shape[-1])
-    ypad1 = extra*div//2 + Lpad//2
-    ypad2 = extra*div//2+Lpad - Lpad//2
-
-    if img0.ndim>3:
-        pads = np.array([[0,0], [0,0], [xpad1,xpad2], [ypad1, ypad2]])
-    else:
-        pads = np.array([[0,0], [xpad1,xpad2], [ypad1, ypad2]])
-
+#     Lpad = int(div * np.ceil(img0.shape[-2]/div) - img0.shape[-2])
+#     xpad1 = extra*div//2 + Lpad//2
+#     xpad2 = extra*div//2 + Lpad - Lpad//2
+#     Lpad = int(div * np.ceil(img0.shape[-1]/div) - img0.shape[-1])
+#     ypad1 = extra*div//2 + Lpad//2
+#     ypad2 = extra*div//2+Lpad - Lpad//2
+    
+    inds = [k for k in range(-dim,0)]
+    Lpad = [int(div * np.ceil(img0.shape[i]/div) - img0.shape[i]) for i in inds]
+    pad1 = [extra*div//2 + Lpad[k]//2 for k in range(dim)]
+    pad2 = [extra*div//2 + Lpad[k] - Lpad[k]//2 for k in range(dim)]
+    
+    
+    # if img0.ndim>3:
+    #     pads = np.array([[0,0], [0,0], [xpad1,xpad2], [ypad1, ypad2]])
+    # else:
+    #     pads = np.array([[0,0], [xpad1,xpad2], [ypad1, ypad2]])
+    
+    # the idea of the above is to 'pad' z and channels with zeros. Can make that variably with the difference
+    # between dim and img0.ndim
+    #also pretty sure y and x are mised up here, but it corrects itself 
+    # print('tada',img0.ndim,img0.shape)
+    emptypad = tuple([[0,0]]*(img0.ndim-dim))
+    pads = emptypad+tuple(np.stack((pad1,pad2),axis=1))
+    # print('pads',pads,img0.shape,dim)
     I = np.pad(img0,pads, mode='constant')
 
-    Ly, Lx = img0.shape[-2:]
-    ysub = np.arange(xpad1, xpad1+Ly)
-    xsub = np.arange(ypad1, ypad1+Lx)
-    return I, ysub, xsub
+    # Ly, Lx = img0.shape[-2:]
+    # ysub = np.arange(xpad1, xpad1+Ly)
+    # xsub = np.arange(ypad1, ypad1+Lx)
+    
+    shape = img0.shape[-dim:] 
+    # print('theshape',shape)
+    subs = [np.arange(pad1[k],pad1[k]+shape[k]) for k in range(dim)] #this may be wrong if that xy mixing realyl was intentional 
+    
+    # return I, ysub, xsub
+    return I, subs
 
 
 def random_rotate_and_resize(X, Y=None, scale_range=1., gamma_range=0.5, xy = (224,224), 
                              do_flip=True, rescale=None, unet=False,
-                             inds=None, depth=0, omni=False):
+                             inds=None, depth=0, omni=False, dim=2, nchan=1):
     """ augmentation by random rotation and resizing
 
         X and Y are lists or arrays of length nimg, with dims channels x Ly x Lx (channels optional)
@@ -654,6 +697,11 @@ def random_rotate_and_resize(X, Y=None, scale_range=1., gamma_range=0.5, xy = (2
 
     """
     scale_range = max(0, min(2, float(scale_range))) # limit overall range to [0,2] i.e. 1+-1 
+    # tyx = (224,)*dim
+    n = 16
+    tyx = (224,)*dim if dim==2 else (8*n,)+(8*n,)*(dim-1) #must be divisible by 8
+    # Note: just to see if it is possible togwt away with roughly the same number of voxels, can 'cancel out' the 32
+    # by making the spatial dimensions smaller by the square root (then find cloest myltiple of 8)... 40 too small though 
     
     if inds is None: # only relevant when debugging 
         nimg = len(X)
@@ -661,7 +709,7 @@ def random_rotate_and_resize(X, Y=None, scale_range=1., gamma_range=0.5, xy = (2
     
     if omni and OMNI_INSTALLED:
         return omnipose.core.random_rotate_and_resize(X, Y=Y, scale_range=scale_range, gamma_range=gamma_range, 
-                                                 xy=xy, do_flip=do_flip, rescale=rescale, inds=inds)
+                                                 tyx=tyx, do_flip=do_flip, rescale=rescale, inds=inds, nchan=nchan)
     else:
         # backwards compatibility; completely 'stock', no gamma augmentation or any other extra frills. 
         # [Y[i][1:] for i in inds] is necessary because the original transform function does not use masks (entry 0). 

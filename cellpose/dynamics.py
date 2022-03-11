@@ -13,7 +13,6 @@ import logging
 dynamics_logger = logging.getLogger(__name__)
 
 from . import utils, metrics, transforms
-from .io import OMNI_INSTALLED
 
 try:
     import torch
@@ -30,6 +29,16 @@ try:
     SKIMAGE_ENABLED = True
 except:
     SKIMAGE_ENABLED = False
+    
+try:
+    import omnipose
+    # njit requires direct function access or something like that,
+    # so these functions need to be explicitly imported 
+    from omnipose.core import eikonal_update_cpu, step_factor 
+    import edt, fastremap
+    OMNI_INSTALLED = True
+except:
+    OMNI_INSTALLED = False
 
 @njit('(float64[:], int32[:], int32[:], int32, int32, int32, int32)', nogil=True)
 def _extend_centers(T,y,x,ymed,xmed,Lx, niter):
@@ -259,7 +268,7 @@ def masks_to_flows(masks, use_gpu=False, device=None):
     """
     if masks.max() == 0:
         dynamics_logger.warning('empty masks!')
-        return np.zeros((2, *masks.shape), 'float32')
+        return masks, None, None, np.zeros((2, *masks.shape), 'float32')
 
     if TORCH_ENABLED and use_gpu:
         if use_gpu and device is None:
@@ -293,7 +302,7 @@ def masks_to_flows(masks, use_gpu=False, device=None):
 # It is possible that flows can be eliminated in place of the distance field. The current distance field may not be smooth 
 # enough, or maybe the network really does require the flow field prediction to work well. But in 3D, it will be a huge
 # advantage if the network could predict just the distance (and boudnary) classes and not 3 extra flow components. 
-def labels_to_flows(labels, files=None, use_gpu=False, device=None, redo_flows=False):
+def labels_to_flows(labels, files=None, use_gpu=False, device=None, redo_flows=False, dim=2):
     """ convert labels (list of masks or flows) to flows for training model 
 
     if files is not None, flows are saved to files to be reused
@@ -316,8 +325,8 @@ def labels_to_flows(labels, files=None, use_gpu=False, device=None, redo_flows=F
     nimg = len(labels)
     if labels[0].ndim < 3:
         labels = [labels[n][np.newaxis,:,:] for n in range(nimg)]
-
-    if labels[0].shape[0] == 1 or labels[0].ndim < 3 or redo_flows: # flows need to be recomputed
+    
+    if labels[0].shape[0] == 1 or labels[0].ndim < 3 or redo_flows: # flows need to be recomputed if the first dim is 1, has fewer than three entries, or 
         
         dynamics_logger.info('computing flows for labels')
         
@@ -372,12 +381,6 @@ def map_coordinates(I, yc, xc, Y):
                       np.float32(I[c, yf, xf1]) * (1 - y) * x +
                       np.float32(I[c, yf1, xf]) * y * (1 - x) +
                       np.float32(I[c, yf1, xf1]) * y * x )
-
-
-@njit()
-def step_factor(t):
-    """ Euler integration suppression factor."""
-    return (1+t)
 
 
 def steps2D_interp(p, dP, niter, use_gpu=False, device=None, omni=False, calc_trace=False):
