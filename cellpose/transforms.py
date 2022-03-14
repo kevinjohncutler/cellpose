@@ -697,19 +697,16 @@ def random_rotate_and_resize(X, Y=None, scale_range=1., gamma_range=0.5, xy = (2
 
     """
     scale_range = max(0, min(2, float(scale_range))) # limit overall range to [0,2] i.e. 1+-1 
-    # tyx = (224,)*dim
-    n = 16
-    tyx = (224,)*dim if dim==2 else (8*n,)+(8*n,)*(dim-1) #must be divisible by 8
-    # Note: just to see if it is possible togwt away with roughly the same number of voxels, can 'cancel out' the 32
-    # by making the spatial dimensions smaller by the square root (then find cloest myltiple of 8)... 40 too small though 
-    
+
     if inds is None: # only relevant when debugging 
         nimg = len(X)
         inds = np.arange(nimg)
     
     if omni and OMNI_INSTALLED:
-        return omnipose.core.random_rotate_and_resize(X, Y=Y, scale_range=scale_range, gamma_range=gamma_range, 
-                                                 tyx=tyx, do_flip=do_flip, rescale=rescale, inds=inds, nchan=nchan)
+        n = 16
+        tyx = (224,)*dim if dim==2 else (8*n,)+(8*n,)*(dim-1) #must be divisible by 8
+        return omnipose.core.random_rotate_and_resize(X, Y=Y, scale_range=scale_range, gamma_range=gamma_range,
+                                                      tyx=tyx, do_flip=do_flip, rescale=rescale, inds=inds, nchan=nchan)
     else:
         # backwards compatibility; completely 'stock', no gamma augmentation or any other extra frills. 
         # [Y[i][1:] for i in inds] is necessary because the original transform function does not use masks (entry 0). 
@@ -856,6 +853,7 @@ def original_random_rotate_and_resize(X, Y=None, scale_range=1., xy = (224,224),
         M = cv2.getAffineTransform(pts1,pts2)
 
         img = X[n].copy()
+        
         if Y is not None:
             labels = Y[n].copy()
             if labels.ndim<3:

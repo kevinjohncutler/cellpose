@@ -6,14 +6,14 @@ import tifffile
 import logging, pathlib, sys
 from pathlib import Path
 
-from . import utils, plot, transforms
-
 try:
     from omnipose.utils import format_labels
     import ncolor
     OMNI_INSTALLED = True
 except:
     OMNI_INSTALLED = False
+
+from . import utils, plot, transforms
 
 try:
     from PyQt5 import QtGui, QtCore, Qt, QtWidgets
@@ -104,8 +104,10 @@ def get_image_files(folder, mask_filter, imf=None, look_one_level_down=False):
     
     folders = []
     if look_one_level_down:
+        # folders = natsorted(glob.glob(os.path.join(folder, "*/")))
         folders = natsorted(glob.glob(os.path.join(folder, "*",'')))  #forward slash is unix only, this should generalize to windows too  
     folders.append(folder)
+
     for folder in folders:
         image_names.extend(glob.glob(folder + '/*%s.png'%imf))
         image_names.extend(glob.glob(folder + '/*%s.jpg'%imf))
@@ -144,7 +146,7 @@ def get_label_files(image_names, mask_filter, imf=None):
     else:
         flow_names = [label_names[n] + '_flows.tif' for n in range(nimg)]
     if not all([os.path.exists(flow) for flow in flow_names]):
-        print('Not all flows are present. Run flow generation again.')
+        io_logger.info('not all flows are present, running flow generation for all images') #not sure if that's accurate...
         flow_names = None
     
     # check for masks
@@ -200,6 +202,7 @@ def load_train_test_data(train_dir, test_dir=None, image_filter=None, mask_filte
     return images, labels, image_names, test_images, test_labels, image_names_test
 
 
+
 def masks_flows_to_seg(images, masks, flows, diams, file_names, channels=None):
     """ save output of model eval to be loaded in GUI 
 
@@ -245,13 +248,14 @@ def masks_flows_to_seg(images, masks, flows, diams, file_names, channels=None):
 
     if len(channels)==1:
         channels = channels[0]
-
+    
     flowi = []
     if flows[0].ndim==3:
         Ly, Lx = masks.shape[-2:]
         flowi.append(cv2.resize(flows[0], (Lx, Ly), interpolation=cv2.INTER_NEAREST)[np.newaxis,...])
     else:
         flowi.append(flows[0])
+    
     if flows[0].ndim==3:
         cellprob = (np.clip(transforms.normalize99(flows[2]),0,1) * 255).astype(np.uint8)
         cellprob = cv2.resize(cellprob, (Lx, Ly), interpolation=cv2.INTER_NEAREST)

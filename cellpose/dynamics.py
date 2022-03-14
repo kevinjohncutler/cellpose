@@ -13,6 +13,12 @@ import logging
 dynamics_logger = logging.getLogger(__name__)
 
 from . import utils, metrics, transforms
+# from .io import OMNI_INSTALLED
+try:
+    from omnipose.core import step_factor 
+    OMNI_INSTALLED = True
+except:
+    OMNI_INSTALLED = False
 
 try:
     import torch
@@ -29,16 +35,6 @@ try:
     SKIMAGE_ENABLED = True
 except:
     SKIMAGE_ENABLED = False
-    
-try:
-    import omnipose
-    # njit requires direct function access or something like that,
-    # so these functions need to be explicitly imported 
-    from omnipose.core import eikonal_update_cpu, step_factor 
-    import edt, fastremap
-    OMNI_INSTALLED = True
-except:
-    OMNI_INSTALLED = False
 
 @njit('(float64[:], int32[:], int32[:], int32, int32, int32, int32)', nogil=True)
 def _extend_centers(T,y,x,ymed,xmed,Lx, niter):
@@ -268,7 +264,7 @@ def masks_to_flows(masks, use_gpu=False, device=None):
     """
     if masks.max() == 0:
         dynamics_logger.warning('empty masks!')
-        return masks, None, None, np.zeros((2, *masks.shape), 'float32')
+        return np.zeros((2, *masks.shape), 'float32')
 
     if TORCH_ENABLED and use_gpu:
         if use_gpu and device is None:
@@ -326,7 +322,7 @@ def labels_to_flows(labels, files=None, use_gpu=False, device=None, redo_flows=F
     if labels[0].ndim < 3:
         labels = [labels[n][np.newaxis,:,:] for n in range(nimg)]
     
-    if labels[0].shape[0] == 1 or labels[0].ndim < 3 or redo_flows: # flows need to be recomputed if the first dim is 1, has fewer than three entries, or 
+    if labels[0].shape[0] == 1 or labels[0].ndim < 3 or redo_flows: # flows need to be recomputed if labels are just the masks
         
         dynamics_logger.info('computing flows for labels')
         
@@ -759,7 +755,7 @@ def get_masks(p, iscell=None, rpad=20, flows=None, threshold=0.4, use_gpu=False,
 def compute_masks(dP, cellprob, bd=None, p=None, inds=None, niter=200, mask_threshold=0.0, diam_threshold=12.,
                    flow_threshold=0.4, interp=True, do_3D=False, 
                    min_size=15, resize=None, verbose=False,
-                   use_gpu=False,device=None,nclasses=3):
+                   use_gpu=False, device=None, nclasses=3):
     """ compute masks using dynamics from dP, cellprob, and boundary """
     if verbose:
          dynamics_logger.info('mask_threshold is %f',mask_threshold)

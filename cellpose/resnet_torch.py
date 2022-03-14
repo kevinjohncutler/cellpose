@@ -14,40 +14,6 @@ from . import transforms, io, dynamics, utils
 
 sz = 3 #kernel size, works as xy or xyz/xyt equally well 
 
-# conv, batchnorm, and maxpool all only have support only to 3d for now 
-
-# def _batchnorm(in_channels, eps=1e-5, dim=2):
-#     if dim==2:
-#         batchnorm = nn.BatchNorm2d
-#     elif dim==3:
-#         batchnorm = nn.BatchNorm3d
-#     return batchnorm
-        
-# def _conv(in_channels, out_channels, sz, padding=sz//2, dim=2):
-#     if dim==2:
-#         conv = nn.Conv2d
-#     elif dim==3:
-#         conv = nn.Conv3d
-#     return conv
-
-# def batchconv(in_channels, out_channels, sz, dim):
-#     return nn.Sequential(
-#         # nn.BatchNorm2d(in_channels, eps=1e-5),
-#         _batchnorm(in_channels, eps=1e-5, dim=dim),
-#         nn.ReLU(inplace=True),
-#         # nn.Conv2d(in_channels, out_channels, sz, padding=sz//2),
-#         _conv(in_channels, out_channels, sz, padding=sz//2, dim=dim),
-#     )  
-
-# def batchconv0(in_channels, out_channels, sz, dim):
-#     return nn.Sequential(
-#         # nn.BatchNorm2d(in_channels, eps=1e-5),
-#         _batchnorm(in_channels, eps=1e-5, dim=dim),
-#         # nn.Conv2d(in_channels, out_channels, sz, padding=sz//2),
-#         _conv(in_channels, out_channels, sz, padding=sz//2, dim=dim),
-#     )  
-
-# @autocast()  #putting it here appears to do absplutely nothing
 def batchconv(in_channels, out_channels, sz, dim):
     if dim==2:
         return nn.Sequential(
@@ -238,7 +204,8 @@ class upsample(nn.Module):
     
 class CPnet(nn.Module):
     def __init__(self, nbase, nout, sz, residual_on=True, 
-                 style_on=True, concatenation=False, mkldnn=False, dim=2, checkpoint=True):
+                 style_on=True, concatenation=False, mkldnn=False, dim=2, 
+                 checkpoint=False, dropout=False):
         super(CPnet, self).__init__()
         self.checkpoint = checkpoint # master switch 
         self.nbase = nbase
@@ -256,11 +223,12 @@ class CPnet(nn.Module):
         self.make_style = make_style(dim=self.dim)
         self.output = batchconv(nbaseup[0], nout, 1, self.dim)
         self.style_on = style_on
-        # if self.omni:
-        self.dropout = nn.Dropout(0.1) # make this toggle on with omni
+        
+        self.do_dropout = dropout
+        if self.do_dropout:
+            self.dropout = nn.Dropout(0.1) # make this toggle on with omni
     
     # @autocast() #significant decrease in GPU memory usage (e.g. 19.8GB vs 11.8GB for a particular test run)
-    # shoot, autocast seems to cause instability 
     def forward(self, data):
         if self.mkldnn:
             data = data.to_mkldnn()
@@ -280,8 +248,8 @@ class CPnet(nn.Module):
         T0 = self.upsample(style, T0, self.mkldnn)
         # T0 = cp.checkpoint(self.upsample, style, T0, self.mkldnn) #not working
         
-        # if self.omni:
-        T0 = self.dropout(T0)
+        if self.do_dropout:
+            T0 = self.dropout(T0)
 
         # T0 = self.output(T0)
         T0 = cp.checkpoint(self.output,T0) if self.checkpoint else self.output(T0) #only  small reduction, 300MB

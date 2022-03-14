@@ -54,24 +54,23 @@ def main():
     # settings for locating and formatting images
     input_img_args = parser.add_argument_group("input image arguments")
     input_img_args.add_argument('--dir',
-                                default=[], type=str, help='folder containing data to run or train on.')
+                        default=[], type=str, help='folder containing data to run or train on.')
     input_img_args.add_argument('--look_one_level_down', action='store_true', help='run processing on all subdirectories of current folder')
     input_img_args.add_argument('--mxnet', action='store_true', help='use mxnet')
     input_img_args.add_argument('--img_filter',
-                                default=[], type=str, help='end string for images to run on')
+                        default=[], type=str, help='end string for images to run on')
     input_img_args.add_argument('--channel_axis',
-                                default=None, type=int, help='axis of image which corresponds to image channels') # state assumtions here made in code about channel placement 
+                        default=None, type=int, help='axis of image which corresponds to image channels')
     input_img_args.add_argument('--z_axis',
-                                default=None, type=int, help='axis of image which corresponds to Z dimension')
+                        default=None, type=int, help='axis of image which corresponds to Z dimension')
     input_img_args.add_argument('--chan',
-                                default=0, type=int, help='channel to segment; 0: GRAY, 1: RED, 2: GREEN, 3: BLUE. Default: %(default)s')
+                        default=0, type=int, help='channel to segment; 0: GRAY, 1: RED, 2: GREEN, 3: BLUE. Default: %(default)s')
     input_img_args.add_argument('--chan2',
-                                default=0, type=int, help='nuclear channel (if cyto, optional); 0: NONE, 1: RED, 2: GREEN, 3: BLUE. Default: %(default)s')
+                        default=0, type=int, help='nuclear channel (if cyto, optional); 0: NONE, 1: RED, 2: GREEN, 3: BLUE. Default: %(default)s')
     input_img_args.add_argument('--invert', action='store_true', help='invert grayscale channel')
     input_img_args.add_argument('--all_channels', action='store_true', help='use all channels in image if using own model and images with special channels')
     input_img_args.add_argument('--dim',
                                 default=2, type=int, help='spatiotemporal dimensions of images (not counting channels). Default: %(default)s') ##
-    input_img_args.add_argument('--time_lapse', action='store_true', help='flag to set whether or not extra dimension is temporal for training. Assumes channels x time x space.') ## could adjust for more flexibility 
     
     # model settings 
     model_args = parser.add_argument_group("model arguments")
@@ -83,7 +82,6 @@ def main():
     # algorithm settings
     algorithm_args = parser.add_argument_group("algorithm arguments")
     algorithm_args.add_argument('--omni', action='store_true', help='Omnipose algorithm (disabled by default)')
-    algorithm_args.add_argument('--spacetime', action='store_true', help='segment 3D spacetime volumes') ##
     algorithm_args.add_argument('--cluster', action='store_true', help='DBSCAN clustering. Reduces oversegmentation of thin features (disabled by default).')
     algorithm_args.add_argument('--fast_mode', action='store_true', help='make code run faster by turning off 4 network averaging and resampling')
     algorithm_args.add_argument('--no_resample', action='store_true', help="disable dynamics on full image (makes algorithm faster for images with large diameters)")
@@ -107,7 +105,7 @@ def main():
     output_args.add_argument('--save_tif', action='store_true', help='save masks as tif and outlines as text file for ImageJ')
     output_args.add_argument('--no_npy', action='store_true', help='suppress saving of npy')
     output_args.add_argument('--savedir',
-                             default=None, type=str, help='folder to which segmentation results will be saved (defaults to input image directory)')
+                        default=None, type=str, help='folder to which segmentation results will be saved (defaults to input image directory)')
     output_args.add_argument('--dir_above', action='store_true', help='save output folders adjacent to image folder instead of inside it (off by default)')
     output_args.add_argument('--in_folders', action='store_true', help='flag to save output in folders (off by default)')
     output_args.add_argument('--save_flows', action='store_true', help='whether or not to save RGB images of flows when masks are saved (disabled by default)')
@@ -142,14 +140,12 @@ def main():
     training_args.add_argument('--save_each', action='store_true', help='save the model under a different filename per --save_every epoch for later comparsion')
     training_args.add_argument('--RAdam', action='store_true', help='use RAdam instead of SGD')
     training_args.add_argument('--checkpoint', action='store_true', help='turn on checkpoints to reduce memeory usage')
-
     
     # misc settings
     parser.add_argument('--verbose', action='store_true', help='flag to output extra information (e.g. diameter metrics) for debugging and fine-tuning parameters')
     parser.add_argument('--testing', action='store_true', help='flag to suppress CLI user confirmation for saving output; for test scripts')
     
     args = parser.parse_args()
-
 
     
     # handle mxnet option 
@@ -200,7 +196,6 @@ def main():
                 if not confirm:
                     exit()
                     
-                    
         device, gpu = models.assign_device((not args.mxnet), args.use_gpu)
 
         #define available model names, right now we have three broad categories 
@@ -248,8 +243,37 @@ def main():
             logger.info('>>>> running cellpose on %d images using chan_to_seg %s and chan (opt) %s'%
                             (nimg, cstr0[channels[0]], cstr1[channels[1]]))
             if args.omni:
-                logger.info('>>>> omni is ON, cluster is %d'%(args.cluster))
+                logger.info(f'>>>> omni is ON, cluster is {args.cluster}')
+             
+            # handle built-in model exceptions; bacterial ones get no size model 
+            if builtin_model:
+                if args.mxnet:
+                    if args.pretrained_model=='cyto2':
+                        logger.warning('cyto2 model not available in mxnet, using cyto model')
+                        args.pretrained_model = 'cyto'
+                    if bacterial:
+                        logger.warning('bacterial models not available in mxnet, using pytorch')
+                        args.mxnet = False
+                if not bacterial:                
+                    model = models.Cellpose(gpu=gpu, device=device, model_type=args.pretrained_model, 
+                                                torch=(not args.mxnet), omni=args.omni, net_avg=(not args.fast_mode and not args.no_net_avg))
+                else:
+                    cpmodel_path = models.model_path(args.pretrained_model, 0, True)
+                    model = models.CellposeModel(gpu=gpu, device=device, 
+                                                 pretrained_model=cpmodel_path,
+                                                 torch=True,
+                                                 nclasses=args.nclasses, dim=args.dim, omni=args.omni,
+                                                 net_avg=False)
+            else:
+                if args.all_channels:
+                    channels = None  
+                model = models.CellposeModel(gpu=gpu, device=device, 
+                                             pretrained_model=cpmodel_path,
+                                             torch=True,
+                                             nclasses=args.nclasses, dim=args.dim, omni=args.omni,
+                                             net_avg=False)
             
+
             # omni changes not implemented for mxnet. Full parity for cpu/gpu in pytorch. 
             if args.omni and args.mxnet:
                 logger.info('>>>> omni only implemented in pytorch.')
@@ -279,34 +303,6 @@ def main():
                 logger.info('>>>> Make sure your flow fields are deleted and re-computed.')
                 args.nclasses = 4
             
-            
-            # handle built-in model exceptions; bacterial ones get no size model 
-            if builtin_model:
-                if args.mxnet:
-                    if args.pretrained_model=='cyto2':
-                        logger.warning('cyto2 model not available in mxnet, using cyto model')
-                        args.pretrained_model = 'cyto'
-                    if bacterial:
-                        logger.warning('bacterial models not available in mxnet, using pytorch')
-                        args.mxnet = False
-                if not bacterial:                
-                    model = models.Cellpose(gpu=gpu, device=device, model_type=args.pretrained_model, 
-                                                torch=(not args.mxnet), omni=args.omni) ## no dim or spacetime arguments passed to this yet
-                else:
-                    cpmodel_path = models.model_path(args.pretrained_model, 0, True)
-                    model = models.CellposeModel(gpu=gpu, device=device, 
-                                                 pretrained_model=cpmodel_path,
-                                                 torch=True,
-                                                 nclasses=args.nclasses, dim=args.dim, omni=args.omni)
-            else:
-                if args.all_channels:
-                    channels = None  
-                model = models.CellposeModel(gpu=gpu, device=device, 
-                                             pretrained_model=cpmodel_path,
-                                             torch=True,
-                                             nclasses=args.nclasses, dim=args.dim, omni=args.omni)
-            
-            
             # handle diameters
             if args.diameter==0:
                 if builtin_model:
@@ -321,6 +317,7 @@ def main():
             
             
             tqdm_out = utils.TqdmToLogger(logger,level=logging.INFO)
+            
             for image_name in tqdm(image_names, file=tqdm_out):
                 image = io.imread(image_name)
                 out = model.eval(image, channels=channels, diameter=diameter,
@@ -338,7 +335,8 @@ def main():
                                 z_axis=args.z_axis,
                                 omni=args.omni,
                                 anisotropy=args.anisotropy,
-                                verbose=args.verbose)
+                                verbose=args.verbose,
+                                model_loaded=True)
                 masks, flows = out[:2]
                 if len(out) > 3:
                     diams = out[-1]
@@ -370,39 +368,29 @@ def main():
                 cpmodel_path = os.fspath(args.pretrained_model)
                 # szmean = 30.
                 szmean = args.diameter # respect user defined, defaults to 30
-            
+                
             test_dir = None if len(args.test_dir)==0 else args.test_dir
             output = io.load_train_test_data(args.dir, test_dir, imf, args.mask_filter, args.unet, args.look_one_level_down)
             images, labels, image_names, test_images, test_labels, image_names_test = output
-            
-            #determine dimension of images; must be consistent, add an error here perhaps if not 
-
 
             # training with all channels
             if args.all_channels:
                 img = images[0]
-                dim = img.ndim
-                # if img.ndim==3:
-                #     nchan = min(img.shape)
-                # elif img.ndim==2:
-                #     nchan = 1
-                
-                # if the stated dimension self.dim is not the same as the image dimension, then the difference must be the channel axis
-                # this could maybe be used to set the channel axis, but that's no good if there is one channel and just one time point (that should be squeezed out in that case)
-                # would have to make an assumption
+                dim = img.ndim 
+               
                 shape = img.shape
-                if args.dim != dim:
+                if args.dim != dim: # user dim allows us to detect 3D images with or with out channel axis
                     if args.channel_axis is not None:
                         nchan = shape[args.channel_axis]
                     else:
-                        nchan = min(shape) # This assumes that the
+                        nchan = min(shape) # This assumes that the channle axis is the smallest 
                         args.channel_axis = np.where([s==nchan for s in shape])
                         logger.info('>>>> channel axis detected at position %s, manually specify if incorrect'%args.channel_axis)
-                else: # default of 2 matches most common use case of 2D, single-channel ND volumes will require 
+                else: 
                     nchan = 1
                 channels = None 
             else:
-                nchan = 2 
+                nchan = 2
 
             
             # model path
@@ -441,27 +429,27 @@ def main():
                                         nchan=nchan)
             else:
                 model = models.CellposeModel(device=device,
-                                            torch=(not args.mxnet),
-                                            pretrained_model=cpmodel_path, 
-                                            diam_mean=szmean,
-                                            residual_on=args.residual_on,
-                                            style_on=args.style_on,
-                                            concatenation=args.concatenation,
-                                            nclasses=args.nclasses,
-                                            nchan=nchan,
-                                            omni=args.omni,
-                                            dim=args.dim) # init to 2D pr 3D
+                                             torch=(not args.mxnet),
+                                             pretrained_model=cpmodel_path,
+                                             diam_mean=szmean,
+                                             residual_on=args.residual_on,
+                                             style_on=args.style_on,
+                                             concatenation=args.concatenation,
+                                             nclasses=args.nclasses,
+                                             nchan=nchan,
+                                             omni=args.omni,
+                                             dim=args.dim) # init to 2D pr 3D
             
             # train segmentation model
             if args.train:
                 cpmodel_path = model.train(images, labels, train_files=image_names,
                                            test_data=test_images, test_labels=test_labels, test_files=image_names_test,
-                                           learning_rate=args.learning_rate, channels=channels, channel_axis=args.channel_axis,
+                                           learning_rate=args.learning_rate, channels=channels,
                                            save_path=os.path.realpath(args.dir), save_every=args.save_every,
                                            save_each=args.save_each,
                                            rescale=rescale,n_epochs=args.n_epochs,
                                            batch_size=args.batch_size, 
-                                           min_train_masks=args.min_train_masks, 
+                                           min_train_masks=args.min_train_masks,
                                            SGD=(not args.RAdam))
                 model.pretrained_model = cpmodel_path
                 logger.info('>>>> model trained and saved to %s'%cpmodel_path)

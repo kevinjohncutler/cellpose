@@ -128,7 +128,7 @@ def compare_masks(data_dir, image_names, runtype, model_type):
                 print('checking output %s'%output_test)
                 masks_test = io.imread(output_test)
                 masks_true = io.imread(output_true)
-                print('masks',np.unique(masks_test),np.unique(masks_true),output_test,output_true)
+                # print('masks',np.unique(masks_test),np.unique(masks_true),output_test,output_true)
                 
                 ap = metrics.average_precision(masks_true, masks_test)[0]
                 print('average precision of [%0.3f %0.3f %0.3f]'%(ap[0],ap[1],ap[2]))

@@ -18,33 +18,18 @@ try:
 except:
     MXNET_ENABLED = False
 
-    
-import torch
-#     from GPUtil import showUtilization as gpu_usage #for gpu memory debugging 
-from torch import nn
-from torch.utils import mkldnn as mkldnn_utils
-from . import resnet_torch
-
-    
 try:
     import torch
-    
     from torch.cuda.amp import autocast, GradScaler
-    # torch.backends.cudnn.benchmark = True
-    
-#     from GPUtil import showUtilization as gpu_usage #for gpu memory debugging 
     from torch import nn
     from torch.utils import mkldnn as mkldnn_utils
     from . import resnet_torch
     TORCH_ENABLED = True
     torch_GPU = torch.device('cuda')
     torch_CPU = torch.device('cpu')
-    
-
-    #print('HEEEYY',TORCH_ENABLED)
 except Exception as e:
     TORCH_ENABLED = False
-    #print(e)
+    print(e)
 
 core_logger = logging.getLogger(__name__)
 tqdm_out = utils.TqdmToLogger(core_logger, level=logging.INFO)
@@ -95,7 +80,6 @@ def _use_gpu_torch(gpu_number=0):
 
 def assign_device(istorch, gpu):
     if gpu and use_gpu(istorch=istorch):
-        #print('fdgdfdfgdfg',TORCH_ENABLED,istorch)
         device = torch_GPU if istorch else mx_GPU
         gpu=True
         core_logger.info('>>>> using GPU')
@@ -131,9 +115,10 @@ def check_mkl(istorch=True):
 
 class UnetModel():
     def __init__(self, gpu=False, pretrained_model=False,
-                    diam_mean=30., net_avg=True, device=None,
-                    residual_on=False, style_on=False, concatenation=True,
-                    nclasses=3, torch=True, nchan=2, dim=2,checkpoint=False):
+                 diam_mean=30., net_avg=True, device=None,
+                 residual_on=False, style_on=False, concatenation=True,
+                 nclasses=3, torch=True, nchan=2, dim=2, 
+                 checkpoint=False, dropout=False):
         self.unet = True
         if torch:
             if not TORCH_ENABLED:
@@ -171,7 +156,9 @@ class UnetModel():
         self.nbase = [32,64,128,256]
         self.nchan = nchan
         self.dim = dim
-        self.checkpoint=checkpoint
+        self.checkpoint = checkpoint
+        self.dropout = dropout
+        
         if self.torch:
             self.nbase = [nchan, 32, 64, 128, 256]
             self.net = resnet_torch.CPnet(self.nbase, 
@@ -180,8 +167,10 @@ class UnetModel():
                                           residual_on=residual_on, 
                                           style_on=style_on,
                                           concatenation=concatenation,
-                                          mkldnn=self.mkldnn, dim=self.dim, 
-                                          checkpoint=self.checkpoint).to(self.device) # edit for 3D
+                                          mkldnn=self.mkldnn, 
+                                          dim=self.dim, 
+                                          checkpoint=self.checkpoint,
+                                          dropout=self.dropout).to(self.device)
         else:
             self.net = resnet_style.CPnet(self.nbase, nout=self.nclasses,
                                         residual_on=residual_on, 
@@ -351,7 +340,7 @@ class UnetModel():
     def _from_device(self, X):
         if self.torch:
             x = X.detach().cpu().numpy()
-            torch.cuda.empty_cache() # THIS finally works to clear memeory aftr evaluation 
+            torch.cuda.empty_cache() # clear memeory after evaluation (confirmed working)
         else:
             x = X.asnumpy()
         return x
@@ -363,7 +352,7 @@ class UnetModel():
             self.net.eval()
             if self.mkldnn:
                 self.net = mkldnn_utils.to_mkldnn(self.net)
-            with torch.no_grad(): # this should already be saving a lot of memory 
+            with torch.no_grad():
                 y, style = self.net(X)
         else:
             y, style = self.net(X)
@@ -473,11 +462,8 @@ class UnetModel():
             1D array summarizing the style of the image,
             if tiled it is averaged over tiles
 
-        """   
-        
-        # covert image format for network 
+        """  
         transpose = False
-        # print('inhere',self.dim,imgs.ndim)
         if imgs.ndim==4 and self.dim==2: #doing cellpose 3D, model does 2D slices but image is 3D+chans  
             # make image Lz x nchan x Ly x Lx for net
             imgs = np.transpose(imgs, (0,3,1,2)) 
@@ -492,14 +478,10 @@ class UnetModel():
             detranspose = tuple([k for k in range(1,self.dim+1)])+(0,)#(1,2,0)
         ## The do_3D option makes sense because that's the Cellpose3D slicing. For true 3D (set with dim=3),
         ## we assume nchan.Lz/t.Ly.Lx 
-        
-        # imgs is a misnomer since it should be just one image at this point 
-        # print('_run_net 00', imgs.shape,'dim',self.dim)
-        
-        # imgs = imgs[np.newaxis] #temporary patch
 
-        
-        # pad image for net so Ly and Lx are divisible by 4 ## Need to make this workable for all dims becides channels
+        # imgs is a misnomer since it should be just one image at this point 
+
+        # pad image for net so volume dimensions are divisible by 4 
         imgs, subs = transforms.pad_image_ND(imgs,dim=self.dim)
         # slices from padding
         # slc = [slice(0, self.nclasses) for n in range(imgs.ndim)] # changed from imgs.shape[n]+1 for first slice size 
@@ -507,17 +489,11 @@ class UnetModel():
         # print('slice',slc,return_conv)
         slc[-(self.dim+1)] = slice(0, self.nclasses + 32*return_conv + 1)
         for k in range(1,self.dim+1):
-            # print('k',k)
             slc[-k] = slice(subs[-k][0], subs[-k][-1]+1)
-        # slc[-2] = slice(ysub[0], ysub[-1]+1)
-        # slc[-1] = slice(xsub[0], xsub[-1]+1)
         slc = tuple(slc)
-        # print('slice2',slc)
 
-        # print('_run_net 01', imgs.shape, tile, augment, imgs.ndim, slc,imgs.max(),imgs.min())
         # run network
-        if tile or augment or (imgs.ndim==4 and self.dim==2): ## I'll need to work out the tiling in ND... 
-            # print('tiles')
+        if tile or augment or (imgs.ndim==4 and self.dim==2): ## need to work out the tiling in ND... 
             y, style = self._run_tiled(imgs, augment=augment, bsize=bsize, 
                                       tile_overlap=tile_overlap, 
                                       return_conv=return_conv)
@@ -527,17 +503,14 @@ class UnetModel():
             y, style = y[0], style[0]
         style /= (style**2).sum()**0.5
 
-        # print('_run_net 02', imgs.shape)
-        
+
         # slice out padding
-        # print('nowhere',y.shape)
         y = y[slc]
-        # print('nowhere2',y.shape)
 
         # transpose so channels axis is last again
         if transpose:
             y = np.transpose(y, detranspose)
-        
+
         return y, style
     
     def _run_tiled(self, imgi, augment=False, bsize=224, tile_overlap=0.1, return_conv=False):
@@ -699,9 +672,7 @@ class UnetModel():
             rescaling = [rsz] * 3
         pm = [(0,1,2,3), (1,0,2,3), (2,0,1,3)]
         ipm = [(3,0,1,2), (3,1,0,2), (3,1,2,0)]
-
         yf = np.zeros((3, self.nclasses, imgs.shape[0], imgs.shape[1], imgs.shape[2]), np.float32)
-        #print('HERE',yf.shape,tile)
         for p in range(3 - 2*self.unet):
             xsl = imgs.copy().transpose(pm[p])
             # rescale image for flow computation
@@ -737,7 +708,6 @@ class UnetModel():
         """ train function uses 0-1 mask label and boundary pixels for training """
 
         nimg = len(train_data)
-
 
         train_data, train_labels, test_data, test_labels, run_test = transforms.reshape_train_test(train_data, train_labels,
                                                                                                    test_data, test_labels,
@@ -813,21 +783,25 @@ class UnetModel():
     def _train_step(self, x, lbl):
         X = self._to_device(x)
         if self.torch:
-            # with autocast(): does nothing with autocat in the model forward pass
-            self.optimizer.zero_grad() #set_to_none=True help with memory? DOn't see a difference, removed it 
-
+            self.optimizer.zero_grad() 
             self.net.train()
-            with autocast(): #try here instead of in model forward...
-                y = self.net(X)[0] # returns flows, styles, but something not returning right shape for 3D
-                #print('tohere', len(self.net(X)),y.shape,self.net(X)[1].shape)
+            
+            if self.autocast:
+                with autocast(): 
+                    y = self.net(X)[0] 
+                    loss = self.loss_fn(lbl,y)
+                self.scaler.scale(loss).backward()
+                train_loss = loss.item()
+                self.scaler.step(self.optimizer) 
+                train_loss *= len(x)
+                self.scaler.update()
+            else:
+                y = self.net(X)[0]
                 loss = self.loss_fn(lbl,y)
-            # loss.backward() #retain_graph=True
-            self.scaler.scale(loss).backward() ##
-            train_loss = loss.item()
-            # self.optimizer.step()
-            self.scaler.step(self.optimizer) ##
-            train_loss *= len(x)
-            self.scaler.update()##
+                loss.backward()
+                train_loss = loss.item()
+                self.optimizer.step()
+                train_loss *= len(x)
         else:
             with mx.autograd.record():
                 y = self.net(X)[0]
@@ -899,11 +873,11 @@ class UnetModel():
               test_data=None, test_labels=None,
               save_path=None, save_every=100, save_each=False,
               learning_rate=0.2, n_epochs=500, momentum=0.9, weight_decay=0.00001, 
-              SGD=True, batch_size=8, nimg_per_epoch=None, rescale=True, netstr=None): 
+              SGD=True, batch_size=8, nimg_per_epoch=None, rescale=True, netstr=None, do_autocast=False): 
         """ train function uses loss function self.loss_fn in models.py"""
         
         d = datetime.datetime.now()
-        
+        self.autocast = do_autocast
         self.n_epochs = n_epochs
         if isinstance(learning_rate, (list, np.ndarray)):
             if isinstance(learning_rate, np.ndarray) and learning_rate.ndim > 1:
@@ -932,7 +906,6 @@ class UnetModel():
         self._set_criterion()
         
         nimg = len(train_data)
-        #print('nimg',nimg,len(train_data[0].shape))
 
         # compute average cell diameter
         if rescale:
@@ -957,7 +930,7 @@ class UnetModel():
         
         tic = time.time()
 
-        
+
         lavg, nsum = 0, 0
 
         if save_path is not None:
@@ -985,7 +958,8 @@ class UnetModel():
             rperm = np.random.permutation(nimg)
             inds_all = np.hstack((inds_all, rperm))
         
-        self.scaler = GradScaler()
+        if self.autocast:
+            self.scaler = GradScaler()
         
         for iepoch in range(self.n_epochs):    
             if SGD:
@@ -996,13 +970,11 @@ class UnetModel():
                 inds = rperm[ibatch:ibatch+batch_size]
                 rsc = diam_train[inds] / self.diam_mean if rescale else np.ones(len(inds), np.float32)
                 # now passing in the full train array, need the labels for distance field
-                # #print('pre_trans',train_data[0].shape)
                 imgi, lbl, scale = transforms.random_rotate_and_resize(
                                         [train_data[i] for i in inds], Y=[train_labels[i] for i in inds],
                                         rescale=rsc, scale_range=scale_range, unet=self.unet, inds=inds, omni=self.omni, dim=self.dim, nchan=self.nchan)
                 if self.unet and lbl.shape[1]>1 and rescale:
                     lbl[:,1] /= diam_batch[:,np.newaxis,np.newaxis]**2
-                # #print('hghgfhgfhg',imgi.shape,lbl.shape)
                 train_loss = self._train_step(imgi, lbl)
                 lavg += train_loss
                 nsum += len(imgi) 
@@ -1053,6 +1025,8 @@ class UnetModel():
                     ksave += 1
                     core_logger.info(f'saving network parameters to {file_name}')
                     self.net.save_model(file_name)
+            else:
+                file_name = save_path
 
         # reset to mkldnn if available
         self.net.mkldnn = self.mkldnn
@@ -1130,7 +1104,7 @@ class DivergenceLoss(torch.nn.Module):
         return torch.mean(torch.square(diff[mask]))
 #         return torch.mean(torch.sum(torch.square(diff),axis=(-2,-1))/torch.sum(mask,axis=(-2,-1)))
 
-@torch.jit.script# doesn't seem to do anything 
+# @torch.jit.script# doesn't seem to do anything 
 def divergence(y):
     axes = [k for k in range(len(y[0]))]
     dim = y.shape[1]
@@ -1141,4 +1115,3 @@ def divergence(y):
 # averaging the mean across each 
 def mean_of_means(x):
     return torch.mean(torch.mean(x, axis=(-2,-1)))
-
