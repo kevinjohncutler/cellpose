@@ -52,6 +52,7 @@ def logger_setup():
                     ]
                 )
     logger = logging.getLogger(__name__)
+    # logger.setLevel(logging.DEBUG) # does not fix CLI
     logger.info(f'WRITING LOG OUTPUT TO {log_file}')
     #logger.handlers[1].stream = sys.stdout
 
@@ -60,7 +61,8 @@ def logger_setup():
 # helper function to check for a path; if it doesn't exist, make it 
 def check_dir(path):
     if not os.path.isdir(path):
-        os.mkdir(path)
+        # os.mkdir(path)
+        os.makedirs(path,exist_ok=True)
 
 def outlines_to_text(base, outlines):
     with open(base + '_cp_outlines.txt', 'w') as f:
@@ -72,7 +74,7 @@ def outlines_to_text(base, outlines):
 
 def imread(filename):
     ext = os.path.splitext(filename)[-1]
-    if ext== '.tif' or ext=='tiff':
+    if ext== '.tif' or ext=='.tiff':
         img = tifffile.imread(filename)
         return img
     else:
@@ -343,11 +345,17 @@ def save_masks(images, masks, flows, file_names, png=True, tif=False, channels=[
 
     if isinstance(masks, list):
         for image, mask, flow, file_name in zip(images, masks, flows, file_names):
-            save_masks(image, mask, flow, file_name, png=png, tif=tif, suffix=suffix,dir_above=dir_above,
-                       save_flows=save_flows,save_outlines=save_outlines,save_ncolor=save_ncolor,
-                       savedir=savedir,save_txt=save_txt,in_folders=in_folders, omni=omni)
+            save_masks(image, mask, flow, file_name, png=png, tif=tif, suffix=suffix, dir_above=dir_above,
+                       save_flows=save_flows,save_outlines=save_outlines, save_ncolor=save_ncolor,
+                       savedir=savedir, save_txt=save_txt, in_folders=in_folders, omni=omni)
         return
     
+    
+    # make sure there is a leading underscore if any suffix was supplied
+    if len(suffix):
+        if suffix[0]!='_':
+            suffix = '_'+suffix
+        
     if masks.ndim > 2 and not tif:
         raise ValueError('cannot save 3D outputs as PNG, use tif option instead')
 #     base = os.path.splitext(file_names)[0]
@@ -367,12 +375,14 @@ def save_masks(images, masks, flows, file_names, png=True, tif=False, channels=[
         txtdir = os.path.join(savedir,'txt_outlines')
         ncolordir = os.path.join(savedir,'ncolor_masks')
         flowdir = os.path.join(savedir,'flows')
+        cpdir = os.path.join(savedir,'cp_output')
     else:
         maskdir = savedir
         outlinedir = savedir
         txtdir = savedir
         ncolordir = savedir
         flowdir = savedir
+        cpdir = savedir
         
     check_dir(maskdir) 
 
@@ -401,8 +411,10 @@ def save_masks(images, masks, flows, file_names, png=True, tif=False, channels=[
         for ext in exts:
             
             imsave(os.path.join(maskdir,basename + '_cp_masks' + suffix + ext), masks)
-            
-    if png and MATPLOTLIB and not min(images.shape) > 3:
+    
+    criterion3 = not (min(images.shape) > 3 and images.ndim >=3)
+    
+    if png and MATPLOTLIB and criterion3:
         img = images.copy()
         if img.ndim<3:
             img = img[:,:,np.newaxis]
@@ -411,7 +423,8 @@ def save_masks(images, masks, flows, file_names, png=True, tif=False, channels=[
         
         fig = plt.figure(figsize=(12,3))
         plot.show_segmentation(fig, img, masks, flows[0], omni=omni)
-        fig.savefig(os.path.join(savedir,basename + '_cp_output' + suffix + '.png'), dpi=300)
+        check_dir(cpdir) 
+        fig.savefig(os.path.join(cpdir,basename + '_cp_output' + suffix + '.png'), dpi=300)
         plt.close(fig)
 
     # ImageJ txt outline files 

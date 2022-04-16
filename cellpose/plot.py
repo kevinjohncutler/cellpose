@@ -108,9 +108,9 @@ def show_segmentation(fig, img, maski, flowi, channels=[0,0], file_name=None, om
         img0 = np.transpose(img0, (1,2,0))
     if img0.shape[-1] < 3 or img0.ndim < 3:
         img0 = image_to_rgb(img0, channels=channels, omni=omni)
-    else:
-        if img0.max()<=50.0:
-            img0 = np.uint8(np.clip(img0*255, 0, 1))
+
+    img0 = (transforms.normalize99(img0,omni=omni)*(2**8-1)).astype(np.uint8)
+    
     ax.imshow(img0)
     ax.set_title('original image')
     ax.axis('off')
@@ -295,7 +295,7 @@ def disk(med, r, Ly, Lx):
 
 def outline_view(img0,maski,color=[1,0,0], mode='inner'):
     """
-    Generates a red outline overlay onto image. 
+    Generates a red outline overlay onto image.
     """
 #     img0 = utils.rescale(img0)
     if len(img0.shape)<3:

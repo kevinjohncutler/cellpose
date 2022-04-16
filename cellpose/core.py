@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 import tempfile
 import cv2
 from scipy.stats import mode
-from . import transforms, dynamics, utils, plot, metrics
+from . import transforms, dynamics, utils, metrics
 
 try:
     from mxnet import gluon, nd
@@ -32,6 +32,9 @@ except Exception as e:
     print(e)
 
 core_logger = logging.getLogger(__name__)
+core_logger.setLevel(logging.DEBUG) # no idea how CLI output is supposed to work with --verbose, that doesn't work 
+# logging.getLogger().addHandler(logging.StreamHandler())
+
 tqdm_out = utils.TqdmToLogger(core_logger, level=logging.INFO)
 
 # nclasses now specified by user or by model type in models.py
@@ -972,7 +975,8 @@ class UnetModel():
                 # now passing in the full train array, need the labels for distance field
                 imgi, lbl, scale = transforms.random_rotate_and_resize(
                                         [train_data[i] for i in inds], Y=[train_labels[i] for i in inds],
-                                        rescale=rsc, scale_range=scale_range, unet=self.unet, inds=inds, omni=self.omni, dim=self.dim, nchan=self.nchan)
+                                        rescale=rsc, scale_range=scale_range, unet=self.unet, 
+                                        inds=inds, omni=self.omni, dim=self.dim, nchan=self.nchan)
                 if self.unet and lbl.shape[1]>1 and rescale:
                     lbl[:,1] /= diam_batch[:,np.newaxis,np.newaxis]**2
                 train_loss = self._train_step(imgi, lbl)
@@ -990,7 +994,8 @@ class UnetModel():
                         rsc = diam_test[inds] / self.diam_mean if rescale else np.ones(len(inds), np.float32)
                         imgi, lbl, scale = transforms.random_rotate_and_resize(
                                             [test_data[i] for i in inds], Y=[test_labels[i] for i in inds], 
-                                            scale_range=0., rescale=rsc, unet=self.unet, inds=inds, omni=self.omni, dim=self.dim) 
+                                            scale_range=0., rescale=rsc, unet=self.unet, inds=inds, 
+                                            omni=self.omni, dim=self.dim) 
                         if self.unet and lbl.shape[1]>1 and rescale:
                             lbl[:,1] *= scale[0]**2
 
@@ -1063,7 +1068,7 @@ class MaskedLoss(torch.nn.Module):
         return torch.mean(torch.square(diff[mask]))
 #         return torch.mean(torch.sum(torch.square(diff),axis=(-2,-1))/torch.sum(mask,axis=(-2,-1)))
         
-# I suspect that, of all the loss functions, this one would be the one that suffers must from 16 bit precision 
+# I suspect that, of all the loss functions, this one would be the one that suffers most from 16 bit precision 
 class ArcCosDotLoss(torch.nn.Module):
     def __init__(self):
         super().__init__()

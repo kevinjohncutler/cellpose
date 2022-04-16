@@ -172,6 +172,7 @@ def main():
         if args.verbose:
             from .io import logger_setup
             logger, log_file = logger_setup()
+            print('>>>> log file',log_file)
         else:
             print('>>>> !NEW LOGGING SETUP! To see cellpose progress, set --verbose')
             print('No --verbose => no progress or info printed')

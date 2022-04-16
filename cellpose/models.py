@@ -5,6 +5,9 @@ from tqdm import trange, tqdm
 from urllib.parse import urlparse
 import torch
 
+from scipy.ndimage import gaussian_filter
+
+
 import logging
 models_logger = logging.getLogger(__name__)
 
@@ -38,6 +41,7 @@ def cache_model_path(basename):
     cached_file = os.fspath(MODEL_DIR.joinpath(basename)) 
     if not os.path.exists(cached_file):
         models_logger.info('Downloading: "{}" to {}\n'.format(url, cached_file))
+        print(url,cached_file)
         utils.download_url_to_file(url, cached_file, progress=True)
     return cached_file
 
@@ -401,6 +405,10 @@ class CellposeModel(UnetModel):
             # set omni flag to true if the name contains it
             self.omni = 'omni' in os.path.splitext(Path(pretrained_model_string).name)[0]
             
+            # for now, omni models cannot do net_avg 
+            if self.omni:
+                net_avg = False
+                
             #changed to only look for multiple files if net_avg is selected
             model_range = range(4) if net_avg else range(1)
             pretrained_model = [model_path(pretrained_model_string, j, torch) for j in model_range]
@@ -690,6 +698,11 @@ class CellposeModel(UnetModel):
             cellprob = np.sum([yf[k][2] for k in range(3)],axis=0)/3 if omni else np.sum([yf[k][2] for k in range(3)],axis=0)
             bd = np.sum([yf[k][3] for k in range(3)],axis=0)/3 if self.nclasses==4 else np.zeros_like(cellprob)
             dP = np.stack((yf[1][0] + yf[2][0], yf[0][0] + yf[2][1], yf[0][1] + yf[1][1]), axis=0) # (dZ, dY, dX)
+            if omni:
+                dP = np.stack([gaussian_filter(dP[a],sigma=1.5) for a in range(3)]) # remove some artifacts
+                bd = gaussian_filter(bd,sigma=1.5)
+                cellprob = gaussian_filter(cellprob,sigma=1.5)
+                dP = dP/2 #should be averaging components 
             del yf
         else:
             tqdm_out = utils.TqdmToLogger(models_logger, level=logging.INFO)
@@ -700,7 +713,7 @@ class CellposeModel(UnetModel):
             if resample:
                 s = tuple(shape[-(self.dim+1):-1])
             else:
-                s =  tuple((np.array(shape[-(self.dim+1):-1])*rescale).astype(int))
+                s = tuple((np.array(shape[-(self.dim+1):-1])*rescale).astype(int))
             
             dP = np.zeros((self.dim, nimg,)+s, np.float32)
             cellprob = np.zeros((nimg,)+s, np.float32)
@@ -749,10 +762,11 @@ class CellposeModel(UnetModel):
                 else:
                     # run omnipose compute_masks
                     masks, p, tr = omnipose.core.compute_masks(dP, cellprob, bd, niter=niter, mask_threshold=mask_threshold,
-                                                                flow_threshold=flow_threshold, diam_threshold=diam_threshold, 
-                                                                interp=interp, do_3D=do_3D, cluster=cluster, resize=None, 
-                                                                calc_trace=calc_trace, verbose=verbose,
-                                                                use_gpu=self.gpu, device=self.device, nclasses=self.nclasses)
+                                                               flow_threshold=flow_threshold, diam_threshold=diam_threshold,
+                                                               interp=interp, do_3D=do_3D, cluster=cluster, resize=None,
+                                                               calc_trace=calc_trace, verbose=verbose,
+                                                               use_gpu=self.gpu, device=self.device, 
+                                                               nclasses=self.nclasses, dim=self.dim)
             else:
                 masks, p, tr = [], [], []
                 resize = shape[-(self.dim+1):-1] if not resample else None 
@@ -767,10 +781,11 @@ class CellposeModel(UnetModel):
                         # run omnipose compute_masks
                         bdi = bd[i] if bd is not None else None
                         outputs = omnipose.core.compute_masks(dP[:,i], cellprob[i], bdi, niter=niter, mask_threshold=mask_threshold,
-                                                                flow_threshold=flow_threshold, diam_threshold=diam_threshold, 
-                                                                interp=interp, cluster=cluster, resize=resize, 
-                                                                calc_trace=calc_trace, verbose=verbose,
-                                                                use_gpu=self.gpu, device=self.device, nclasses=self.nclasses)
+                                                              flow_threshold=flow_threshold, diam_threshold=diam_threshold,
+                                                              interp=interp, cluster=cluster, resize=resize,
+                                                              calc_trace=calc_trace, verbose=verbose,
+                                                              use_gpu=self.gpu, device=self.device, 
+                                                              nclasses=self.nclasses, dim=self.dim)
                     masks.append(outputs[0])
                     p.append(outputs[1])
                     tr.append(outputs[2])
@@ -887,14 +902,15 @@ class CellposeModel(UnetModel):
         """
         if rescale:
             models_logger.info(f'Training with rescale = {rescale:.2f}')
-        train_data, train_labels, test_data, test_labels, run_test = transforms.reshape_train_test(train_data, train_labels,  # one more place to generalize to 3D
+        train_data, train_labels, test_data, test_labels, run_test = transforms.reshape_train_test(train_data, train_labels,  
                                                                                                    test_data, test_labels,
-                                                                                                   channels, channel_axis, normalize, 
+                                                                                                   channels, channel_axis,
+                                                                                                   normalize, 
                                                                                                    self.dim, self.omni)
         # check if train_labels have flows
         # if not, flows computed, returned with labels as train_flows[i][0]
         labels_to_flows = dynamics.labels_to_flows if not (self.omni and OMNI_INSTALLED) else omnipose.core.labels_to_flows
-        train_flows = labels_to_flows(train_labels, files=train_files, use_gpu=self.gpu, device=self.device)
+        train_flows = labels_to_flows(train_labels, files=train_files, use_gpu=self.gpu, device=self.device, dim=self.dim)
         if run_test:
             test_flows = labels_to_flows(test_labels, files=test_files, use_gpu=self.gpu, device=self.device)
         else:

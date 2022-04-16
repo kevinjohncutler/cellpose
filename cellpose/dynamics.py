@@ -13,12 +13,9 @@ import logging
 dynamics_logger = logging.getLogger(__name__)
 
 from . import utils, metrics, transforms
-# from .io import OMNI_INSTALLED
-try:
+from .io import OMNI_INSTALLED
+if OMNI_INSTALLED:
     from omnipose.core import step_factor 
-    OMNI_INSTALLED = True
-except:
-    OMNI_INSTALLED = False
 
 try:
     import torch
@@ -122,7 +119,6 @@ def masks_to_flows_gpu(masks, device=None):
     if device is None:
         device = torch.device('cuda')
 
-    
     Ly0,Lx0 = masks.shape
     Ly, Lx = Ly0+2, Lx0+2
 
@@ -163,6 +159,7 @@ def masks_to_flows_gpu(masks, device=None):
     isneighbor = neighbor_masks == neighbor_masks[0]
     ext = np.array([[sr.stop - sr.start + 1, sc.stop - sc.start + 1] for sr, sc in slices])
     n_iter = 2 * (ext.sum(axis=1)).max()
+    
     # run diffusion
     mu = _extend_centers_gpu(neighbors, centers, isneighbor, Ly, Lx, 
                              n_iter=n_iter, device=device)
