@@ -155,7 +155,7 @@ def show_segmentation(fig, img, maski, flowi, channels=[0,0], file_name=None, om
         ax.imshow(np.ones_like(flowi)*bg_color)
     
     ax.imshow(flowi)
-    ax.set_title('predicted cell pose')
+    ax.set_title('predicted flow field')
     ax.axis('off')
 
     if file_name is not None:

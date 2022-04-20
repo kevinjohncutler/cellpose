@@ -72,7 +72,7 @@ class convdown(nn.Module):
         return x
 
 class downsample(nn.Module):
-    def __init__(self, nbase, sz, residual_on=True, dim=2, checkpoint=False):
+    def __init__(self, nbase, sz, residual_on=True, kernel_size=2, dim=2, checkpoint=False):
         super().__init__()
         self.checkpoint = checkpoint
         self.down = nn.Sequential()
@@ -83,7 +83,7 @@ class downsample(nn.Module):
             maxpool = nn.MaxPool2d
         elif dim==3:
             maxpool = nn.MaxPool3d
-        self.maxpool = maxpool(2, 2)
+        self.maxpool = maxpool(kernel_size) # (2,2), stride by defualt is the same as kernel window
         
         for n in range(len(nbase)-1):
             if residual_on:
@@ -175,10 +175,10 @@ class make_style(nn.Module):
         return style
     
 class upsample(nn.Module):
-    def __init__(self, nbase, sz, residual_on=True, concatenation=False, dim=2,checkpoint=False):
+    def __init__(self, nbase, sz, residual_on=True, concatenation=False, kernel_size=2, dim=2, checkpoint=False):
         super().__init__()
         self.checkpoint = checkpoint
-        self.upsampling = nn.Upsample(scale_factor=2, mode='nearest')
+        self.upsampling = nn.Upsample(scale_factor=kernel_size, mode='nearest')
         self.up = nn.Sequential()
         for n in range(1,len(nbase)):
             if residual_on:
@@ -205,9 +205,10 @@ class upsample(nn.Module):
 class CPnet(nn.Module):
     def __init__(self, nbase, nout, sz, residual_on=True, 
                  style_on=True, concatenation=False, mkldnn=False, dim=2, 
-                 checkpoint=False, dropout=False):
+                 checkpoint=False, dropout=False, kernel_size=2):
         super(CPnet, self).__init__()
         self.checkpoint = checkpoint # master switch 
+        self.kernel_size = kernel_size # for maxpool
         self.nbase = nbase
         self.nout = nout
         self.sz = sz
@@ -216,10 +217,11 @@ class CPnet(nn.Module):
         self.style_on = style_on
         self.concatenation = concatenation
         self.mkldnn = mkldnn if mkldnn is not None else False
-        self.downsample = downsample(nbase, sz, residual_on=residual_on, dim=self.dim)
+        self.downsample = downsample(nbase, sz, residual_on=residual_on, kernel_size=self.kernel_size, dim=self.dim)
         nbaseup = nbase[1:]
         nbaseup.append(nbaseup[-1])
-        self.upsample = upsample(nbaseup, sz, residual_on=residual_on, concatenation=concatenation, dim=self.dim, checkpoint=self.checkpoint)
+        self.upsample = upsample(nbaseup, sz, residual_on=residual_on, concatenation=concatenation, 
+                                 kernel_size=self.kernel_size, dim=self.dim, checkpoint=self.checkpoint)
         self.make_style = make_style(dim=self.dim)
         self.output = batchconv(nbaseup[0], nout, 1, self.dim)
         self.style_on = style_on

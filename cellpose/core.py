@@ -121,7 +121,7 @@ class UnetModel():
                  diam_mean=30., net_avg=True, device=None,
                  residual_on=False, style_on=False, concatenation=True,
                  nclasses=3, torch=True, nchan=2, dim=2, 
-                 checkpoint=False, dropout=False):
+                 checkpoint=False, dropout=False, kernel_size=2):
         self.unet = True
         if torch:
             if not TORCH_ENABLED:
@@ -161,6 +161,7 @@ class UnetModel():
         self.dim = dim
         self.checkpoint = checkpoint
         self.dropout = dropout
+        self.kernel_size = kernel_size
         
         if self.torch:
             self.nbase = [nchan, 32, 64, 128, 256]
@@ -173,7 +174,8 @@ class UnetModel():
                                           mkldnn=self.mkldnn, 
                                           dim=self.dim, 
                                           checkpoint=self.checkpoint,
-                                          dropout=self.dropout).to(self.device)
+                                          dropout=self.dropout,
+                                          kernel_size=self.kernel_size).to(self.device)
         else:
             self.net = resnet_style.CPnet(self.nbase, nout=self.nclasses,
                                         residual_on=residual_on, 
@@ -707,7 +709,8 @@ class UnetModel():
     def train(self, train_data, train_labels, train_files=None, 
               test_data=None, test_labels=None, test_files=None,
               channels=None, normalize=True, save_path=None, save_every=50, save_each=False,
-              learning_rate=0.2, n_epochs=500, momentum=0.9, weight_decay=0.00001, batch_size=8, rescale=False):
+              learning_rate=0.2, n_epochs=500, momentum=0.9, weight_decay=0.00001, 
+              batch_size=8, rescale=False):
         """ train function uses 0-1 mask label and boundary pixels for training """
 
         nimg = len(train_data)
@@ -872,11 +875,11 @@ class UnetModel():
                 self.criterion2 = gluon.loss.SigmoidBinaryCrossEntropyLoss()
 
     # Restored defaults. Need to make sure rescale is properly turned off and omni turned on when using CLI. 
-    def _train_net(self, train_data, train_labels, 
-              test_data=None, test_labels=None,
-              save_path=None, save_every=100, save_each=False,
-              learning_rate=0.2, n_epochs=500, momentum=0.9, weight_decay=0.00001, 
-              SGD=True, batch_size=8, nimg_per_epoch=None, rescale=True, netstr=None, do_autocast=False): 
+    def _train_net(self, train_data, train_labels, test_data=None, test_labels=None,
+                   save_path=None, save_every=100, save_each=False,
+                   learning_rate=0.2, n_epochs=500, momentum=0.9, weight_decay=0.00001, 
+                   SGD=True, batch_size=8, nimg_per_epoch=None, rescale=True, netstr=None, 
+                   do_autocast=False, tyx=None): 
         """ train function uses loss function self.loss_fn in models.py"""
         
         d = datetime.datetime.now()
@@ -975,7 +978,7 @@ class UnetModel():
                 # now passing in the full train array, need the labels for distance field
                 imgi, lbl, scale = transforms.random_rotate_and_resize(
                                         [train_data[i] for i in inds], Y=[train_labels[i] for i in inds],
-                                        rescale=rsc, scale_range=scale_range, unet=self.unet, 
+                                        rescale=rsc, scale_range=scale_range, unet=self.unet, tyx=tyx,
                                         inds=inds, omni=self.omni, dim=self.dim, nchan=self.nchan)
                 if self.unet and lbl.shape[1]>1 and rescale:
                     lbl[:,1] /= diam_batch[:,np.newaxis,np.newaxis]**2
@@ -994,7 +997,7 @@ class UnetModel():
                         rsc = diam_test[inds] / self.diam_mean if rescale else np.ones(len(inds), np.float32)
                         imgi, lbl, scale = transforms.random_rotate_and_resize(
                                             [test_data[i] for i in inds], Y=[test_labels[i] for i in inds], 
-                                            scale_range=0., rescale=rsc, unet=self.unet, inds=inds, 
+                                            scale_range=0., rescale=rsc, unet=self.unet, tyx=tyx, inds=inds, 
                                             omni=self.omni, dim=self.dim) 
                         if self.unet and lbl.shape[1]>1 and rescale:
                             lbl[:,1] *= scale[0]**2

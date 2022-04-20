@@ -364,7 +364,7 @@ class CellposeModel(UnetModel):
                  diam_mean=30., device=None,
                  residual_on=True, style_on=True, concatenation=False,
                  nchan=2, nclasses=3, dim=2, omni=False, 
-                 checkpoint=False, dropout=False):
+                 checkpoint=False, dropout=False, kernel_size=2):
         if not torch:
             if not MXNET_ENABLED:
                 torch = True
@@ -383,6 +383,7 @@ class CellposeModel(UnetModel):
         self.nchan = nchan 
         self.checkpoint = checkpoint
         self.dropout = dropout
+        self.kernel_size = kernel_size
         # channel axis might be useful here 
         
         if model_type is not None or (pretrained_model and not os.path.exists(pretrained_model[0])):
@@ -432,7 +433,8 @@ class CellposeModel(UnetModel):
                          diam_mean=self.diam_mean, net_avg=net_avg, device=device,
                          residual_on=residual_on, style_on=style_on, concatenation=concatenation,
                          nclasses=self.nclasses, torch=self.torch, nchan=self.nchan, 
-                         dim=self.dim, checkpoint=self.checkpoint, dropout=self.dropout)
+                         dim=self.dim, checkpoint=self.checkpoint, dropout=self.dropout,
+                         kernel_size=self.kernel_size)
 
         self.unet = False
         self.pretrained_model = pretrained_model
@@ -685,7 +687,7 @@ class CellposeModel(UnetModel):
         
         tic = time.time()
         shape = x.shape
-        nimg = shape[0]        
+        nimg = shape[0] 
         
         bd, tr = None, None
         if do_3D:
@@ -723,6 +725,8 @@ class CellposeModel(UnetModel):
                 if normalize or invert:
                     img = transforms.normalize_img(img, invert=invert, omni=omni)
                 if rescale != 1.0:
+                    if self.dim>2:
+                        print('WARNING, resample not updated for ND')
                     img = transforms.resize_image(img, rsz=rescale)
                 yf, style = self._run_nets(img, net_avg=net_avg,
                                            augment=augment, tile=tile,
@@ -730,6 +734,8 @@ class CellposeModel(UnetModel):
                 
                 ## Not updated for ND
                 if resample:
+                    if self.dim>2:
+                        print('WARNING, resample not updated for ND')
                     yf = transforms.resize_image(yf, shape[1], shape[2])
 
                 cellprob[i] = yf[...,self.dim] #scalar field always after the vector field output 
@@ -754,10 +760,10 @@ class CellposeModel(UnetModel):
             if do_3D:
                 if not (omni and OMNI_INSTALLED):
                     # run cellpose compute_masks
-                    masks, p, tr = dynamics.compute_masks(dP, cellprob, bd, niter=niter, mask_threshold=mask_threshold,
+                    masks, p, tr = dynamics.compute_masks(dP, cellprob, bd, niter=niter, rescale=rescale, resize=None, 
+                                                          mask_threshold=mask_threshold,
                                                           diam_threshold=diam_threshold, flow_threshold=flow_threshold,
-                                                          interp=interp, do_3D=do_3D, min_size=min_size,
-                                                          resize=None, verbose=verbose,
+                                                          interp=interp, do_3D=do_3D, min_size=min_size, verbose=verbose,
                                                           use_gpu=self.gpu, device=self.device, nclasses=self.nclasses)
                 else:
                     # run omnipose compute_masks
@@ -779,10 +785,20 @@ class CellposeModel(UnetModel):
                                                          use_gpu=self.gpu, device=self.device, nclasses=self.nclasses)
                     else:
                         # run omnipose compute_masks
+                        
+                        # important: resampling means that pixels need to go farther to cluser together;
+                        # niter should be determined by dist, first of all; it currently is already scale for resampling, good! 
+                        # dP needs to be scaled for magnitude to get pixels to move the same relative distance
+                        # eps probably should be left the same if the above are changed 
+                        # if resample:
+                        #     print('rescale is',rescale,resize)
+                            # dP[:,i] /= rescale this does nothign here since I normalize the flow anyway, have to pass in 
+                        
                         bdi = bd[i] if bd is not None else None
-                        outputs = omnipose.core.compute_masks(dP[:,i], cellprob[i], bdi, niter=niter, mask_threshold=mask_threshold,
+                        outputs = omnipose.core.compute_masks(dP[:,i], cellprob[i], bdi, niter=niter, rescale=rescale, resize=resize,
+                                                              mask_threshold=mask_threshold,                                   
                                                               flow_threshold=flow_threshold, diam_threshold=diam_threshold,
-                                                              interp=interp, cluster=cluster, resize=resize,
+                                                              interp=interp, cluster=cluster, 
                                                               calc_trace=calc_trace, verbose=verbose,
                                                               use_gpu=self.gpu, device=self.device, 
                                                               nclasses=self.nclasses, dim=self.dim)
@@ -830,7 +846,7 @@ class CellposeModel(UnetModel):
               save_path=None, save_every=100, save_each=False,
               learning_rate=0.2, n_epochs=500, momentum=0.9, SGD=True,
               weight_decay=0.00001, batch_size=8, nimg_per_epoch=None,
-              rescale=True, min_train_masks=5, netstr=None):
+              rescale=True, min_train_masks=5, netstr=None, tyx=None):
 
         """ train network with images train_data 
         
@@ -932,7 +948,7 @@ class CellposeModel(UnetModel):
                                      learning_rate=learning_rate, n_epochs=n_epochs, 
                                      momentum=momentum, weight_decay=weight_decay, 
                                      SGD=SGD, batch_size=batch_size, nimg_per_epoch=nimg_per_epoch, 
-                                     rescale=rescale, netstr=netstr)
+                                     rescale=rescale, netstr=netstr,tyx=tyx)
         self.pretrained_model = model_path
         return model_path
 

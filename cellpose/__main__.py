@@ -77,6 +77,7 @@ def main():
     model_args.add_argument('--pretrained_model', required=False, default='cyto', type=str, help='model to use')
     model_args.add_argument('--unet', required=False, default=0, type=int, help='run standard unet instead of cellpose flow output')
     model_args.add_argument('--nclasses',default=3, type=int, help='if running unet, choose 2 or 3; if training omni, choose 4; standard Cellpose uses 3')
+    model_args.add_argument('--kernel_size',default=2, type=int, help='kernel size for maskpool. Starts at 2, higher means more aggressive downsampling.')
 
 
     # algorithm settings
@@ -140,6 +141,9 @@ def main():
     training_args.add_argument('--save_each', action='store_true', help='save the model under a different filename per --save_every epoch for later comparsion')
     training_args.add_argument('--RAdam', action='store_true', help='use RAdam instead of SGD')
     training_args.add_argument('--checkpoint', action='store_true', help='turn on checkpoints to reduce memeory usage')
+    training_args.add_argument('--dropout',action='store_true', help='Use dropoint in training')
+    training_args.add_argument('--tyx',
+                        default=None, type=str, help='list of yx, zyx, or tyx dimensions for training')
     
     # misc settings
     parser.add_argument('--verbose', action='store_true', help='flag to output extra information (e.g. diameter metrics) for debugging and fine-tuning parameters')
@@ -147,6 +151,9 @@ def main():
     
     args = parser.parse_args()
 
+    # convert the tyx string to a vector
+    if args.tyx is not None:
+        args.tyx = tuple([int(s) for s in (args.tyx.split(','))])
     
     # handle mxnet option 
     if args.check_mkl:
@@ -300,9 +307,11 @@ def main():
             # the yes/no prompt to ask the user if they want their flow fields in the given directory to be deleted. 
             # would also need the look_one_level_down optionally toggled...
             if args.omni and args.train:
-                logger.info('>>>> Training omni model. Setting nclasses to 4.')
-                logger.info('>>>> Make sure your flow fields are deleted and re-computed.')
+                logger.info('>>>> Training omni model. Setting nclasses=4, dropout=True, RAdam=True')
+                logger.info('>>>> Make sure your flow fields are deleted and re-computed if coming from Cellpose.')
                 args.nclasses = 4
+                args.dropout = True
+                args.RAdam = True
             
             # handle diameters
             if args.diameter==0:
@@ -436,10 +445,13 @@ def main():
                                              residual_on=args.residual_on,
                                              style_on=args.style_on,
                                              concatenation=args.concatenation,
-                                             nclasses=args.nclasses,
                                              nchan=nchan,
+                                             nclasses=args.nclasses,
+                                             dim=args.dim, # init to 2D pr 3D
                                              omni=args.omni,
-                                             dim=args.dim) # init to 2D pr 3D
+                                             checkpoint=args.checkpoint,
+                                             dropout=args.dropout,
+                                             kernel_size=args.kernel_size) 
             
             # train segmentation model
             if args.train:
@@ -451,7 +463,8 @@ def main():
                                            rescale=rescale,n_epochs=args.n_epochs,
                                            batch_size=args.batch_size, 
                                            min_train_masks=args.min_train_masks,
-                                           SGD=(not args.RAdam))
+                                           SGD=(not args.RAdam),
+                                           tyx=args.tyx)
                 model.pretrained_model = cpmodel_path
                 logger.info('>>>> model trained and saved to %s'%cpmodel_path)
 

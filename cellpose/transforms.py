@@ -652,9 +652,9 @@ def pad_image_ND(img0, div=16, extra=1, dim=2):
     return I, subs
 
 
-def random_rotate_and_resize(X, Y=None, scale_range=1., gamma_range=0.5, xy = None, 
+def random_rotate_and_resize(X, Y=None, scale_range=1., gamma_range=0.5, tyx=None, 
                              do_flip=True, rescale=None, unet=False,
-                             inds=None, omni=False, dim=2, nchan=1):
+                             inds=None, omni=False, dim=2, nchan=1, kernel_size=2):
     """ augmentation by random rotation and resizing
 
         X and Y are lists or arrays of length nimg, with dims channels x Ly x Lx (channels optional)
@@ -708,18 +708,20 @@ def random_rotate_and_resize(X, Y=None, scale_range=1., gamma_range=0.5, xy = No
     
     if omni and OMNI_INSTALLED:
         n = 16
-        if xy is None:
-            tyx = (224,)*2 if dim==2 else (8*n,)+(8*n,)*(dim-1) #must be divisible by 8
-        else:
-            tyx = xy
+        base = kernel_size
+        L = max(round(224/(base**4)),1)*(base**4) # rounds 224 up to the right multiple to work for base 
+        # not sure if 4 downsampling or 3, but the "multiple of 16" elsewhere makesme think it must be 4, 
+        # but it appears that multiple of 8 actually works? maybe the n=16 above conflates my experiments in 3D
+        if tyx is None:
+            tyx = (L,)*dim if dim==2 else (8*n,)+(8*n,)*(dim-1) #must be divisible by 2**3 = 8
         return omnipose.core.random_rotate_and_resize(X, Y=Y, scale_range=scale_range, gamma_range=gamma_range,
                                                       tyx=tyx, do_flip=do_flip, rescale=rescale, inds=inds, nchan=nchan)
     else:
         # backwards compatibility; completely 'stock', no gamma augmentation or any other extra frills. 
         # [Y[i][1:] for i in inds] is necessary because the original transform function does not use masks (entry 0). 
         # This used to be done in the original function call. 
-        if xy is None:
-            xy = (224,)*2
+        if tyx is None:
+            xy = (224,)*dim
         return original_random_rotate_and_resize(X, Y=[y[1:] for y in Y] if Y is not None else None, 
                                                  scale_range=scale_range, xy=xy,
                                                  do_flip=do_flip, rescale=rescale, unet=unet)
