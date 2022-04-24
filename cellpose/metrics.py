@@ -3,7 +3,7 @@ from . import utils, dynamics
 from numba import jit
 from scipy.optimize import linear_sum_assignment
 from scipy.ndimage import convolve, mean
-
+import fastremap
 
 def mask_ious(masks_true, masks_pred):
     """ return best-matched masks """
@@ -146,8 +146,10 @@ def _label_overlap(x, y):
     
     """
     # put label arrays into standard form then flatten them 
-#     x = (utils.format_labels(x)).ravel()
-#     y = (utils.format_labels(y)).ravel()
+    # fastremap.renumber(x,in_place=True)
+    # fastremap.renumber(y,in_place=True)
+    # x = (utils.format_labels(x)).ravel()
+    # y = (utils.format_labels(y)).ravel()
     x = x.ravel()
     y = y.ravel()
     
@@ -223,7 +225,7 @@ def _true_positive(iou, th):
     ------------
     How it works:
         (1) Find minimum number of masks
-        (2) Define cost matrix; for a given threshold, each element is negative
+        (2) Define cost matrix; for a given threshold, each element is more negative
             the higher the IoU is (perfect IoU is 1, worst is 0). The second term
             gets more negative with higher IoU, but less negative with greater
             n_min (but that's a constant...)

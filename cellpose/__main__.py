@@ -307,10 +307,10 @@ def main():
             # the yes/no prompt to ask the user if they want their flow fields in the given directory to be deleted. 
             # would also need the look_one_level_down optionally toggled...
             if args.omni and args.train:
-                logger.info('>>>> Training omni model. Setting nclasses=4, dropout=True, RAdam=True')
+                logger.info('>>>> Training omni model. Setting nclasses=4, RAdam=True')
                 logger.info('>>>> Make sure your flow fields are deleted and re-computed if coming from Cellpose.')
                 args.nclasses = 4
-                args.dropout = True
+                # args.dropout = True
                 args.RAdam = True
             
             # handle diameters
@@ -385,7 +385,7 @@ def main():
 
             # training with all channels
             if args.all_channels:
-                img = images[0]
+                img = images[0] # but doesn't this only give the first channel?
                 dim = img.ndim 
                
                 shape = img.shape
@@ -393,7 +393,7 @@ def main():
                     if args.channel_axis is not None:
                         nchan = shape[args.channel_axis]
                     else:
-                        nchan = min(shape) # This assumes that the channle axis is the smallest 
+                        nchan = min(shape) # This assumes that the channel axis is the smallest 
                         args.channel_axis = np.where([s==nchan for s in shape])
                         logger.info('>>>> channel axis detected at position %s, manually specify if incorrect'%args.channel_axis)
                 else: 

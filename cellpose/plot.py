@@ -247,13 +247,18 @@ def mask_overlay(img, masks, colors=None, omni=False):
     RGB = (utils.hsv_to_rgb(HSV) * 255).astype(np.uint8)
     return RGB
 
-def image_to_rgb(img0, channels=[0,0], omni=False):
+def image_to_rgb(img0, channels=None, channel_axis=0, omni=False):
     """ image is 2 x Ly x Lx or Ly x Lx x 2 - change to RGB Ly x Lx x 3 """
+    if channels is None:
+        if img0.ndim==2:
+            channels = [0,0]
+        else:
+            channels = [i+1 for i in range(img0.shape[channel_axis])] # 1,2,3 for axes 0,1,2
     img = img0.copy()
     img = img.astype(np.float32)
     if img.ndim<3:
         img = img[:,:,np.newaxis]
-    if img.shape[0]<5:
+    if img.shape[0]<5: # putting channel axis last 
         img = np.transpose(img, (1,2,0))
     if channels[0]==0:
         img = img.mean(axis=-1)[:,:,np.newaxis]
@@ -264,6 +269,8 @@ def image_to_rgb(img0, channels=[0,0], omni=False):
     img *= 255
     img = np.uint8(img)
     RGB = np.zeros((img.shape[0], img.shape[1], 3), np.uint8)
+    
+    # at this point, channel axis is last
     if img.shape[-1]==1:
         RGB = np.tile(img,(1,1,3))
     else:
@@ -293,15 +300,16 @@ def disk(med, r, Ly, Lx):
     x = xx[inds].flatten()
     return y,x
 
-def outline_view(img0,maski,color=[1,0,0], mode='inner'):
+def outline_view(img0,maski,color=[1,0,0], channel_axis=0, mode='inner'):
     """
     Generates a red outline overlay onto image.
     """
 #     img0 = utils.rescale(img0)
-    if len(img0.shape)<3:
-#         img0 = image_to_rgb(img0) broken, transposing some images...
-        img0 = np.stack([img0]*3,axis=-1)
-    
+    if np.max(color)<=1:
+        color = np.array(color)*255
+
+    img0 = image_to_rgb(img0,omni=True) #broken, transposing some images...
+        # img0 = np.stack([img0]*3,axis=-1)
     if SKIMAGE_ENABLED:
         outlines = find_boundaries(maski,mode=mode) #not using masks_to_outlines as that gives border 'outlines'
     else:

@@ -613,42 +613,19 @@ def pad_image_ND(img0, div=16, extra=1, dim=2):
         xrange of pixels in I corresponding to img0
 
     """
-#     Lpad = int(div * np.ceil(img0.shape[-2]/div) - img0.shape[-2])
-#     xpad1 = extra*div//2 + Lpad//2
-#     xpad2 = extra*div//2 + Lpad - Lpad//2
-#     Lpad = int(div * np.ceil(img0.shape[-1]/div) - img0.shape[-1])
-#     ypad1 = extra*div//2 + Lpad//2
-#     ypad2 = extra*div//2+Lpad - Lpad//2
-    
+
     inds = [k for k in range(-dim,0)]
     Lpad = [int(div * np.ceil(img0.shape[i]/div) - img0.shape[i]) for i in inds]
     pad1 = [extra*div//2 + Lpad[k]//2 for k in range(dim)]
     pad2 = [extra*div//2 + Lpad[k] - Lpad[k]//2 for k in range(dim)]
     
-    
-    # if img0.ndim>3:
-    #     pads = np.array([[0,0], [0,0], [xpad1,xpad2], [ypad1, ypad2]])
-    # else:
-    #     pads = np.array([[0,0], [xpad1,xpad2], [ypad1, ypad2]])
-    
-    # the idea of the above is to 'pad' z and channels with zeros. Can make that variably with the difference
-    # between dim and img0.ndim
-    #also pretty sure y and x are mised up here, but it corrects itself 
-    # print('tada',img0.ndim,img0.shape)
     emptypad = tuple([[0,0]]*(img0.ndim-dim))
     pads = emptypad+tuple(np.stack((pad1,pad2),axis=1))
-    # print('pads',pads,img0.shape,dim)
-    I = np.pad(img0,pads, mode='constant')
+    I = np.pad(img0,pads, mode='reflect') # changed from 'constant' - avoids a lot of edge artifacts!!!
 
-    # Ly, Lx = img0.shape[-2:]
-    # ysub = np.arange(xpad1, xpad1+Ly)
-    # xsub = np.arange(ypad1, ypad1+Lx)
-    
     shape = img0.shape[-dim:] 
-    # print('theshape',shape)
     subs = [np.arange(pad1[k],pad1[k]+shape[k]) for k in range(dim)] #this may be wrong if that xy mixing realyl was intentional 
     
-    # return I, ysub, xsub
     return I, subs
 
 
