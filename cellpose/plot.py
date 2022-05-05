@@ -247,13 +247,22 @@ def mask_overlay(img, masks, colors=None, omni=False):
     RGB = (utils.hsv_to_rgb(HSV) * 255).astype(np.uint8)
     return RGB
 
-def image_to_rgb(img0, channels=None, channel_axis=0, omni=False):
+def image_to_rgb(img0, channels=None, channel_axis=-1, omni=False):
     """ image is 2 x Ly x Lx or Ly x Lx x 2 - change to RGB Ly x Lx x 3 """
     if channels is None:
         if img0.ndim==2:
             channels = [0,0]
         else:
             channels = [i+1 for i in range(img0.shape[channel_axis])] # 1,2,3 for axes 0,1,2
+    
+    # if not np.any(img0[1]):
+    #     # img0 = img0[0]
+    # channels=[0,0]
+    # img = transforms.move_axis(img0, m_axis=channel_axis, first=False) # move channel last 
+    # if not np.any(img[...,1]):
+    #     img0 = img0[0]
+    #     channels=[0,0]
+    
     img = img0.copy()
     img = img.astype(np.float32)
     if img.ndim<3:
@@ -264,7 +273,7 @@ def image_to_rgb(img0, channels=None, channel_axis=0, omni=False):
         img = img.mean(axis=-1)[:,:,np.newaxis]
     for i in range(img.shape[-1]):
         if np.ptp(img[:,:,i])>0:
-            img[:,:,i] = np.clip(transforms.normalize99(img[:,:,i],omni=omni), 0, 1)
+            img[:,:,i] = transforms.normalize99(img[:,:,i],omni=omni)
             img[:,:,i] = np.clip(img[:,:,i], 0, 1)
     img *= 255
     img = np.uint8(img)
@@ -300,23 +309,21 @@ def disk(med, r, Ly, Lx):
     x = xx[inds].flatten()
     return y,x
 
-def outline_view(img0,maski,color=[1,0,0], channel_axis=0, mode='inner'):
+def outline_view(img0,maski,color=[1,0,0], channels=None, channel_axis=-1, mode='inner'):
     """
     Generates a red outline overlay onto image.
     """
 #     img0 = utils.rescale(img0)
     if np.max(color)<=1:
-        color = np.array(color)*255
+        color = np.array(color)*(2**8-1)
 
-    img0 = image_to_rgb(img0,omni=True) #broken, transposing some images...
-        # img0 = np.stack([img0]*3,axis=-1)
+    img0 = image_to_rgb(img0,channels=channels,channel_axis=channel_axis,omni=True) 
     if SKIMAGE_ENABLED:
         outlines = find_boundaries(maski,mode=mode) #not using masks_to_outlines as that gives border 'outlines'
     else:
         outlines = utils.masks_to_outlines(maski,mode=mode) #not using masks_to_outlines as that gives border 'outlines'
     outY, outX = np.nonzero(outlines)
     imgout = img0.copy()
-#     imgout[outY, outX] = np.array([255,0,0]) #pure red
-    imgout[outY, outX] = np.array(color)
+    imgout[outY, outX] = color
 
     return imgout

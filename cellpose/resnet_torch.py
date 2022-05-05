@@ -198,7 +198,7 @@ class upsample(nn.Module):
                 x = cp.checkpoint(self.upsampling,x) if self.checkpoint else self.upsampling(x) # doesn't do much 
                 
             # x = self.up[n](x, xd[n], style, mkldnn=mkldnn)
-            x =  cp.checkpoint(self.up[n],x, xd[n], style, mkldnn) if self.checkpoint else self.up[n](x, xd[n], style, mkldnn=mkldnn)# ok this one saves a ton of memory,2GB 
+            x =  cp.checkpoint(self.up[n], x, xd[n], style, mkldnn) if self.checkpoint else self.up[n](x, xd[n], style, mkldnn=mkldnn)# ok this one saves a ton of memory,2GB 
             
         return x
     

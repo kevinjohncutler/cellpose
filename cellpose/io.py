@@ -97,7 +97,9 @@ def imsave(filename, arr):
         cv2.imwrite(filename, arr)
 #         skimage.io.imsave(filename, arr.astype()) #cv2 doesn't handle transparency
 
-def get_image_files(folder, mask_filter, imf=None, look_one_level_down=False):
+# now allows for any extension(s) to be specified, allowing exlcusion if necessary, non-image files, etc. 
+def get_image_files(folder, mask_filter='_masks', imf=None, look_one_level_down=False,
+                    extensions = ['png','jpg','jpeg','tif','tiff']):
     """ find all images in a folder and if look_one_level_down all subfolders """
     mask_filters = ['_cp_masks', '_cp_output', '_flows', mask_filter]
     image_names = []
@@ -110,12 +112,11 @@ def get_image_files(folder, mask_filter, imf=None, look_one_level_down=False):
         folders = natsorted(glob.glob(os.path.join(folder, "*",'')))  #forward slash is unix only, this should generalize to windows too  
     folders.append(folder)
 
+    
     for folder in folders:
-        image_names.extend(glob.glob(folder + '/*%s.png'%imf))
-        image_names.extend(glob.glob(folder + '/*%s.jpg'%imf))
-        image_names.extend(glob.glob(folder + '/*%s.jpeg'%imf))
-        image_names.extend(glob.glob(folder + '/*%s.tif'%imf))
-        image_names.extend(glob.glob(folder + '/*%s.tiff'%imf))
+        for ext in extensions:
+            image_names.extend(glob.glob(folder + ('/*%s.'+ext)%imf))
+    
     image_names = natsorted(image_names)
     imn = []
     for im in image_names:
@@ -168,8 +169,8 @@ def get_label_files(image_names, mask_filter, imf=None):
 
     return label_names, flow_names
 
-
-def load_train_test_data(train_dir, test_dir=None, image_filter=None, mask_filter='_masks', unet=False, look_one_level_down=True):
+# edited to allow omni to not read in training flows if any exist; flows computed on-the-fly and code expects this 
+def load_train_test_data(train_dir, test_dir=None, image_filter=None, mask_filter='_masks', unet=False, look_one_level_down=True, omni=False):
     image_names = get_image_files(train_dir, mask_filter, image_filter, look_one_level_down)
     nimg = len(image_names)
     images = [imread(image_names[n]) for n in range(nimg)]
@@ -178,7 +179,7 @@ def load_train_test_data(train_dir, test_dir=None, image_filter=None, mask_filte
     label_names, flow_names = get_label_files(image_names, mask_filter, imf=image_filter)
     nimg = len(image_names)
     labels = [imread(label_names[n]) for n in range(nimg)]
-    if flow_names is not None and not unet:
+    if flow_names is not None and not unet and not omni:
         for n in range(nimg):
             flows = imread(flow_names[n])
             if flows.shape[0]<4:
@@ -304,9 +305,10 @@ def save_to_png(images, masks, flows, file_names):
     save_masks(images, masks, flows, file_names, png=True)
 
 # Now saves flows, masks, etc. to separate folders.
-def save_masks(images, masks, flows, file_names, png=True, tif=False, channels=[0,0],
-               suffix='',save_flows=False, save_outlines=False, save_ncolor=False, 
-               dir_above=False, in_folders=False, savedir=None, save_txt=True, omni=True):
+def save_masks(images, masks, flows, file_names, png=True, tif=False,
+               suffix='',save_flows=False, save_outlines=False, outline_col=None,
+               save_ncolor=False, dir_above=False, in_folders=False, savedir=None, 
+               save_txt=True, omni=True):
     """ save masks + nicely plotted segmentation image to png and/or tiff
 
     if png, masks[k] for images[k] are saved to file_names[k]+'_cp_masks.png'
@@ -342,12 +344,12 @@ def save_masks(images, masks, flows, file_names, png=True, tif=False, channels=[
         be similar and touch. Any color map can be applied to it (0,1,2,3,4,...).
     
     """
-
     if isinstance(masks, list):
         for image, mask, flow, file_name in zip(images, masks, flows, file_names):
             save_masks(image, mask, flow, file_name, png=png, tif=tif, suffix=suffix, dir_above=dir_above,
-                       save_flows=save_flows,save_outlines=save_outlines, save_ncolor=save_ncolor,
-                       savedir=savedir, save_txt=save_txt, in_folders=in_folders, omni=omni)
+                       save_flows=save_flows,save_outlines=save_outlines, outline_col=outline_col,
+                       save_ncolor=save_ncolor, savedir=savedir, save_txt=save_txt, 
+                       in_folders=in_folders, omni=omni)
         return
     
     
@@ -365,7 +367,7 @@ def save_masks(images, masks, flows, file_names, png=True, tif=False, channels=[
             savedir = Path(file_names).parent.parent.absolute() #go up a level to save in its own folder
         else:
             savedir = Path(file_names).parent.absolute()
-    
+
     check_dir(savedir) 
             
     basename = os.path.splitext(os.path.basename(file_names))[0]
@@ -383,7 +385,6 @@ def save_masks(images, masks, flows, file_names, png=True, tif=False, channels=[
         ncolordir = savedir
         flowdir = savedir
         cpdir = savedir
-        
     check_dir(maskdir) 
 
     exts = []
@@ -436,18 +437,21 @@ def save_masks(images, masks, flows, file_names, png=True, tif=False, channels=[
     # RGB outline images
     if masks.ndim < 3 and save_outlines: 
         check_dir(outlinedir) 
-        outlines = utils.masks_to_outlines(masks)
-        outX, outY = np.nonzero(outlines)
-        img0 = transforms.normalize99(images,omni=omni)
-        if img0.shape[0] < 4:
-            img0 = np.transpose(img0, (1,2,0))
-        if img0.shape[-1] < 3 or img0.ndim < 3:
-            img0 = plot.image_to_rgb(img0, channels=channels)
-        else:
-            if img0.max()<=50.0:
-                img0 = np.uint8(np.clip(img0*255, 0, 1))
-        imgout= img0.copy()
-        imgout[outX, outY] = np.array([255,0,0]) #pure red 
+        # outlines = utils.masks_to_outlines(masks)
+        # outX, outY = np.nonzero(outlines)
+        # img0 = transforms.normalize99(images,omni=omni)
+        img0 = images.copy()        
+
+        # if img0.shape[0] < 4:
+        #     img0 = np.transpose(img0, (1,2,0))
+        # if img0.shape[-1] < 3 or img0.ndim < 3:
+        #     print(img0.shape,'sdfsfdssf')
+        #     img0 = plot.image_to_rgb(img0, channels=channels, omni=omni) #channels=channels, 
+        
+        # img0 = (transforms.normalize99(img0,omni=omni)*(2**8-1)).astype(np.uint8)
+        # imgout= img0.copy()
+        # imgout[outX, outY] = np.array([255,0,0]) #pure red 
+        imgout = plot.outline_view(img0,masks,color=outline_col)
         imsave(os.path.join(outlinedir, basename + '_outlines' + suffix + '.png'),  imgout)
     
     # ncolor labels (ready for color map application)

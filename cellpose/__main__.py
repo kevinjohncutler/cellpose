@@ -380,7 +380,7 @@ def main():
                 szmean = args.diameter # respect user defined, defaults to 30
                 
             test_dir = None if len(args.test_dir)==0 else args.test_dir
-            output = io.load_train_test_data(args.dir, test_dir, imf, args.mask_filter, args.unet, args.look_one_level_down)
+            output = io.load_train_test_data(args.dir, test_dir, imf, args.mask_filter, args.unet, args.look_one_level_down, args.omni)
             images, labels, image_names, test_images, test_labels, image_names_test = output
 
             # training with all channels

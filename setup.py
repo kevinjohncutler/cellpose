@@ -26,7 +26,8 @@ omni_deps = [
         'scikit-learn',
         'edt',
         'torch_optimizer', 
-        'ncolor'
+        'ncolor',
+        'torch_optimizer'
         ]
 
 distributed_deps = [

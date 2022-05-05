@@ -576,7 +576,7 @@ def resize_image(img0, Ly=None, Lx=None, rsz=None, interpolation=cv2.INTER_LINEA
             Ly = int(img0.shape[-3] * rsz[-2])
             Lx = int(img0.shape[-2] * rsz[-1])
     
-    # no_channels useful for z-stacks, sot he third dimension is not treated as a channel
+    # no_channels useful for z-stacks, so the third dimension is not treated as a channel
     # but if this is called for grayscale images, they first become [Ly,Lx,2] so ndim=3 but 
     if (img0.ndim>2 and no_channels) or (img0.ndim==4 and not no_channels):
         if no_channels:
@@ -585,6 +585,8 @@ def resize_image(img0, Ly=None, Lx=None, rsz=None, interpolation=cv2.INTER_LINEA
             imgs = np.zeros((img0.shape[0], Ly, Lx, img0.shape[-1]), np.float32)
         for i,img in enumerate(img0):
             imgs[i] = cv2.resize(img, (Lx, Ly), interpolation=interpolation)
+            # imgs[i] = scipy.ndimage.zoom(img, resize/np.array(img.shape), order=order)
+            
     else:
         imgs = cv2.resize(img0, (Lx, Ly), interpolation=interpolation)
     return imgs
@@ -624,7 +626,7 @@ def pad_image_ND(img0, div=16, extra=1, dim=2):
     I = np.pad(img0,pads, mode='reflect') # changed from 'constant' - avoids a lot of edge artifacts!!!
 
     shape = img0.shape[-dim:] 
-    subs = [np.arange(pad1[k],pad1[k]+shape[k]) for k in range(dim)] #this may be wrong if that xy mixing realyl was intentional 
+    subs = [np.arange(pad1[k],pad1[k]+shape[k]) for k in range(dim)]
     
     return I, subs
 

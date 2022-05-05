@@ -5,8 +5,7 @@ from tqdm import trange, tqdm
 from urllib.parse import urlparse
 import torch
 
-from scipy.ndimage import gaussian_filter
-
+from scipy.ndimage import gaussian_filter, zoom
 
 import logging
 models_logger = logging.getLogger(__name__)
@@ -715,29 +714,42 @@ class CellposeModel(UnetModel):
             if resample:
                 s = tuple(shape[-(self.dim+1):-1])
             else:
-                s = tuple((np.array(shape[-(self.dim+1):-1])*rescale).astype(int))
+                s = tuple(np.round(np.array(shape[-(self.dim+1):-1])*rescale).astype(int))
             
             dP = np.zeros((self.dim, nimg,)+s, np.float32)
             cellprob = np.zeros((nimg,)+s, np.float32)
-                            
             for i in iterator:
                 img = np.asarray(x[i])
                 if normalize or invert:
                     img = transforms.normalize_img(img, invert=invert, omni=omni)
+
+
                 if rescale != 1.0:
-                    if self.dim>2:
-                        print('WARNING, resample not updated for ND')
-                    img = transforms.resize_image(img, rsz=rescale)
+                    # if self.dim>2:
+                    #     print('WARNING, resample not updated for ND')
+                    # img = transforms.resize_image(img, rsz=rescale)
+                    
+                    if img.ndim>self.dim: # then there is a channel axis, assume it is last here 
+                        img = np.stack([zoom(img[...,k],rescale,order=3) for k in range(img.shape[-1])],axis=-1)
+                    else:
+                        img = zoom(img,rescale,order=1)
                 yf, style = self._run_nets(img, net_avg=net_avg,
                                            augment=augment, tile=tile,
                                            tile_overlap=tile_overlap)
                 
                 ## Not updated for ND
+                # resample interpolates the network output to native resolution prior to running Euler integration
+                # this means the masks will have no scaling artifacts. We could *upsample* by some factor to make
+                # the clustering etc. work even better, but that is not implemented yet 
                 if resample:
-                    if self.dim>2:
-                        print('WARNING, resample not updated for ND')
-                    yf = transforms.resize_image(yf, shape[1], shape[2])
-
+                    # if self.dim>2:
+                    #     print('WARNING, resample not updated for ND')
+                    # yf = transforms.resize_image(yf, shape[1], shape[2])
+                    
+                    # ND version actually gives better results than CV2 in some places. 
+                    yf = np.stack([zoom(yf[...,k], shape[1:1+self.dim]/np.array(yf.shape[:2]), order=1) for k in range(yf.shape[-1])],axis=-1)
+                    
+                    # scipy.ndimage.affine_transform(A, np.linalg.inv(M), output_shape=tyx,
                 cellprob[i] = yf[...,self.dim] #scalar field always after the vector field output 
                 order = (self.dim,)+tuple([k for k in range(self.dim)]) #(2,0,1)
                 dP[:, i] = yf[...,:self.dim].transpose(order) 
@@ -926,24 +938,34 @@ class CellposeModel(UnetModel):
         # check if train_labels have flows
         # if not, flows computed, returned with labels as train_flows[i][0]
         labels_to_flows = dynamics.labels_to_flows if not (self.omni and OMNI_INSTALLED) else omnipose.core.labels_to_flows
-        train_flows = labels_to_flows(train_labels, files=train_files, use_gpu=self.gpu, device=self.device, dim=self.dim)
-        if run_test:
-            test_flows = labels_to_flows(test_labels, files=test_files, use_gpu=self.gpu, device=self.device)
-        else:
-            test_flows = None
+        
+        # do not precompute flows for omnipose 
+        if self.omni and OMNI_INSTALLED:
+            models_logger.info('No precomuting flows with Omnipose. Computed during training.')
+            
+            train_labels = [omnipose.utils.format_labels(label) for label in train_labels]
+            nmasks = np.array([label.max() for label in train_labels])
 
-        nmasks = np.array([label[0].max() for label in train_flows])
+        else:
+            train_labels = labels_to_flows(train_labels, files=train_files, use_gpu=self.gpu, device=self.device, dim=self.dim)
+            nmasks = np.array([label[0].max() for label in train_labels])
+
+        if run_test:
+            test_labels = labels_to_flows(test_labels, files=test_files, use_gpu=self.gpu, device=self.device)
+        else:
+            test_labels = None
+
         nremove = (nmasks < min_train_masks).sum()
         if nremove > 0:
             models_logger.warning(f'{nremove} train images with number of masks less than min_train_masks ({min_train_masks}), removing from train set')
             ikeep = np.nonzero(nmasks >= min_train_masks)[0]
             train_data = [train_data[i] for i in ikeep]
-            train_flows = [train_flows[i] for i in ikeep]
+            train_labels = [train_labels[i] for i in ikeep]
 
         if channels is None:
             models_logger.warning('channels is set to None, input must therefore have nchan channels (default is 2)')
-        model_path = self._train_net(train_data, train_flows, 
-                                     test_data=test_data, test_labels=test_flows,
+        model_path = self._train_net(train_data, train_labels, 
+                                     test_data=test_data, test_labels=test_labels,
                                      save_path=save_path, save_every=save_every, save_each=save_each,
                                      learning_rate=learning_rate, n_epochs=n_epochs, 
                                      momentum=momentum, weight_decay=weight_decay, 

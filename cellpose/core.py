@@ -1046,8 +1046,7 @@ class DerivativeLoss(torch.nn.Module):
         super().__init__()
 
     def forward(self,y,Y,w,mask):
-        axes = [k for k in range(len(y[0]))]
-        # axes = y.shape
+        axes = [k for k in range(len(y[0]))]        
         dim = y.shape[1]
         dims = axes[-dim:]
         dy = torch.stack(torch.gradient(y,dim=dims))
@@ -1069,7 +1068,6 @@ class MaskedLoss(torch.nn.Module):
     def forward(self,y,Y,mask):
         diff = (y-Y)/5.
         return torch.mean(torch.square(diff[mask]))
-#         return torch.mean(torch.sum(torch.square(diff),axis=(-2,-1))/torch.sum(mask,axis=(-2,-1)))
         
 # I suspect that, of all the loss functions, this one would be the one that suffers most from 16 bit precision 
 class ArcCosDotLoss(torch.nn.Module):
@@ -1079,14 +1077,9 @@ class ArcCosDotLoss(torch.nn.Module):
     def forward(self,x,y,w,mask):
         eps = 1e-12
         denom = torch.multiply(torch.linalg.norm(x,dim=1),torch.linalg.norm(y,dim=1))+eps
-        # dot = (x[:,0,:,:]*y[:,0,:,:]+x[:,1,:,:]*y[:,1,:,:])
-        # #print('hopethis is 3 at pos 1',x.shape) good 
-        # #print('testhtis',(x[:,0]*y[:,0]).shape,denom.shape)
         dot = torch.sum(torch.stack([x[:,k]*y[:,k] for k in range(x.shape[1])],axis=1),axis=1)
-        # #print('nowthis', dot.shape)
         phasediff = torch.acos(torch.clip(dot/denom,-0.999999,0.999999))/3.141549
         return torch.mean((torch.square(phasediff[mask]))*w[mask])
-#         return torch.mean(torch.sum(torch.square(phasediff)*w,axis=(-2,-1))/torch.sum(mask,axis=(-2,-1)))
     
 class NormLoss(torch.nn.Module):
     def __init__(self):
@@ -1097,7 +1090,6 @@ class NormLoss(torch.nn.Module):
         nY = torch.linalg.norm(Y,dim=1,keepdim=False)/5.
         diff = (ny-nY)
         return torch.mean(torch.square(diff[mask])*w[mask])
-#         return torch.mean(torch.sum(torch.square(diff)*w,axis=(-2,-1))/torch.sum(mask,axis=(-2,-1))) #mean of means, alterna
 
 
 class DivergenceLoss(torch.nn.Module):
@@ -1110,11 +1102,10 @@ class DivergenceLoss(torch.nn.Module):
             mask = torch.abs(divY)>1
         diff = (divY - divy)/5.
         return torch.mean(torch.square(diff[mask]))
-#         return torch.mean(torch.sum(torch.square(diff),axis=(-2,-1))/torch.sum(mask,axis=(-2,-1)))
 
-# @torch.jit.script# doesn't seem to do anything 
+
 def divergence(y):
-    axes = [k for k in range(len(y[0]))]
+    axes = [k for k in range(len(y[0]))] #note that this only works when there are at least two images in batch 
     dim = y.shape[1]
     dims = axes[-dim:]
     return torch.stack([torch.gradient(y[:,-k],dim=k)[0] for k in dims]).sum(dim=0)
