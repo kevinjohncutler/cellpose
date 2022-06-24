@@ -22,7 +22,8 @@ try:
 except:
     MATPLOTLIB = False
 
-NCOLOR = False 
+import ncolor
+from omnipose.utils import sinebow
 # WIP to make GUI use N-color masks. Tricky thing is that only the display should be 
 # reduced to N colors; selection and editing should act on unique labels. 
     
@@ -395,14 +396,19 @@ def _load_masks(parent, filename=None):
 
     parent.update_plot()
 
-def _masks_to_gui(parent, masks, outlines=None):
+def _masks_to_gui(parent, masks, outlines=None, format_labels=False):
     """ masks loaded into GUI """
     # get unique values
     shape = masks.shape
-    
-    fastremap.renumber(masks, in_place=True)
-    masks = np.reshape(masks, shape)
-    masks = masks.astype(np.uint16) if masks.max()<2**16-1 else masks.astype(np.uint32)
+    if parent.ncolor:
+        masks = ncolor.label(masks) 
+    else:
+        if format_labels:
+            masks = ncolor.format_labels(masks,clean=True)
+        else:
+            fastremap.renumber(masks, in_place=True)
+        masks = np.reshape(masks, shape)
+        masks = masks.astype(np.uint16) if masks.max()<2**16-1 else masks.astype(np.uint32)
     parent.cellpix = masks
 
     # get outlines
@@ -420,8 +426,20 @@ def _masks_to_gui(parent, masks, outlines=None):
         parent.outpix = np.reshape(parent.outpix, shape)
 
     parent.ncells = parent.cellpix.max()
-    colors = parent.colormap[:parent.ncells, :3]
+    np.random.seed(42) #try to make a bit more stable 
+    if parent.ncolor:
+        # Approach 1: use a dictionary to color cells but keep their original label
+        # Approach 2: actually change the masks to n-color
+        # 2 is easier and more stable for editing. Only downside is that exporting will
+        # require formatting and users may need to shuffle or add a color to avoid like
+        # colors touching 
+        # colors = parent.colormap[np.linspace(0,255,parent.ncells+1).astype(int), :3]
+        c = sinebow(parent.ncells+1)
+        colors = (np.array(list(c.values()))[1:,:3] * (2**8-1) ).astype(np.uint8)
 
+    else:
+        # colors = parent.colormap[np.random.randint(0,1000,size=parent.ncells), :3]
+        colors = parent.colormap[:parent.ncells, :3]
     parent.cellcolors = list(np.concatenate((np.array([[255,255,255]]), colors), axis=0).astype(np.uint8))
     parent.draw_masks()
     parent.redraw_masks(masks=parent.masksOn, outlines=parent.outlinesOn) # add to obey outline/mask setting upon recomputing 
@@ -451,7 +469,6 @@ def _save_outlines(parent):
         outlines_to_text(base, outlines)
     else:
         print('ERROR: cannot save 3D outlines')
-    
 
 def _save_sets(parent):
     """ save masks to *_seg.npy """

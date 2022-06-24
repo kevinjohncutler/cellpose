@@ -413,9 +413,15 @@ class UnetModel():
                                      bsize=bsize, return_conv=return_conv)
         else:  
             for j in range(len(self.pretrained_model)):
-                self.net.load_model(self.pretrained_model[j], cpu=(not self.gpu))
+                
+                if self.torch and self.gpu:
+                    net = self.net.module
+                else:
+                    net = self.net
+                    
+                net.load_model(self.pretrained_model[0], cpu=(not self.gpu))
                 if not self.torch:
-                    self.net.collect_params().grad_req = 'null'
+                    net.collect_params().grad_req = 'null'
                 y0, style = self._run_net(img, augment=augment, tile=tile, 
                                           tile_overlap=tile_overlap, bsize=bsize,
                                           return_conv=return_conv)
@@ -491,14 +497,13 @@ class UnetModel():
         # slices from padding
         # slc = [slice(0, self.nclasses) for n in range(imgs.ndim)] # changed from imgs.shape[n]+1 for first slice size 
         slc = [slice(0, imgs.shape[n]+1) for n in range(imgs.ndim)]
-        # print('slice',slc,return_conv)
         slc[-(self.dim+1)] = slice(0, self.nclasses + 32*return_conv + 1)
         for k in range(1,self.dim+1):
             slc[-k] = slice(subs[-k][0], subs[-k][-1]+1)
         slc = tuple(slc)
 
         # run network
-        if tile or augment or (imgs.ndim==4 and self.dim==2): ## need to work out the tiling in ND... 
+        if tile or augment or (imgs.ndim==4 and self.dim==2): ## need to work out the tiling in ND... <<<<<
             y, style = self._run_tiled(imgs, augment=augment, bsize=bsize, 
                                       tile_overlap=tile_overlap, 
                                       return_conv=return_conv)
@@ -550,7 +555,8 @@ class UnetModel():
             1D array summarizing the style of the image, averaged over tiles
 
         """
-        if imgi.ndim==4:
+
+        if imgi.ndim==4 and self.dim==2: # in this case, must have a 3D image but using 2D models
             batch_size = self.batch_size 
             Lz, nchan = imgi.shape[:2]
             IMG, ysub, xsub, Ly, Lx = transforms.make_tiles(imgi[0], bsize=bsize, 
@@ -593,31 +599,32 @@ class UnetModel():
                         styles.append(stylei)
             return yf, np.array(styles)
         else:
-            IMG, ysub, xsub, Ly, Lx = transforms.make_tiles(imgi, bsize=bsize, 
-                                                            augment=augment, tile_overlap=tile_overlap)
-            ny, nx, nchan, ly, lx = IMG.shape
-            IMG = np.reshape(IMG, (ny*nx, nchan, ly, lx))
+            IMG, subs, shape = transforms.make_tiles_ND(imgi, bsize=bsize, augment=augment, tile_overlap=tile_overlap) #<<<
+            # IMG already in the form (ny*nx, nchan, ly, lx)
             batch_size = self.batch_size
             niter = int(np.ceil(IMG.shape[0] / batch_size))
             nout = self.nclasses + 32*return_conv
-            y = np.zeros((IMG.shape[0], nout, ly, lx))
+            y = np.zeros((IMG.shape[0], nout)+tuple(IMG.shape[-self.dim:]))
             for k in range(niter):
                 irange = np.arange(batch_size*k, min(IMG.shape[0], batch_size*k+batch_size))
                 y0, style = self.network(IMG[irange], return_conv=return_conv)
-                y[irange] = y0.reshape(len(irange), y0.shape[-3], y0.shape[-2], y0.shape[-1])
+                arg = (len(irange),)+y0.shape[-(self.dim+1):]
+                y[irange] = y0.reshape(arg)
                 if k==0:
                     styles = style[0]
                 styles += style.sum(axis=0)
             styles /= IMG.shape[0]
-            if augment:
+            if augment: # not updated for ND yet 
                 y = np.reshape(y, (ny, nx, nout, bsize, bsize))
                 y = transforms.unaugment_tiles(y, self.unet)
                 y = np.reshape(y, (-1, nout, bsize, bsize))
             
-            yf = transforms.average_tiles(y, ysub, xsub, Ly, Lx)
-            yf = yf[:,:imgi.shape[1],:imgi.shape[2]]
+            yf = transforms.average_tiles_ND(y, subs, shape) #<<<
+            slc = tuple([slice(s) for s in shape])
+            yf = yf[(Ellipsis,)+slc]
             styles /= (styles**2).sum()**0.5
             return yf, styles
+            
 
     def _run_3D(self, imgs, rsz=1.0, anisotropy=None, net_avg=True, 
                 augment=False, tile=True, tile_overlap=0.1, 
@@ -682,7 +689,7 @@ class UnetModel():
             xsl = imgs.copy().transpose(pm[p])
             # rescale image for flow computation
             shape = xsl.shape
-            xsl = transforms.resize_image(xsl, rsz=rescaling[p])  
+            xsl = transforms.resize_image(xsl, rsz=rescaling[p])
             # per image
             core_logger.info('running %s: %d planes of size (%d, %d)'%(sstr[p], shape[0], shape[1], shape[2]))
             y, style = self._run_nets(xsl, net_avg=net_avg, augment=augment, tile=tile, 
@@ -1032,7 +1039,10 @@ class UnetModel():
                     file_name = os.path.join(file_path, file_name)
                     ksave += 1
                     core_logger.info(f'saving network parameters to {file_name}')
-                    self.net.save_model(file_name)
+                    if self.torch:
+                        self.net.module.save_model(file_name)
+                    else:
+                        self.net.save_model(file_name)
             else:
                 file_name = save_path
 

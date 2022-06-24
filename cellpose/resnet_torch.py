@@ -115,14 +115,15 @@ class batchconvstyle(nn.Module):
         
     def forward(self, style, x, mkldnn=False):
         feat = self.full(style)
+        
+        # numer of unsqueezing steps depends on dimension!
+        for k in range(self.dim):
+            feat = feat.unsqueeze(-1)
         if mkldnn:
             x = x.to_dense()
-            y = (x + feat.unsqueeze(-1).unsqueeze(-1)).to_mkldnn()
+            y = (x + feat).to_mkldnn()
         else:
-            z = feat
-            for k in range(self.dim):
-                z = z.unsqueeze(-1)
-            y = x + z # numer of unsqueezing depends on dimension! .unsqueeze(-1), still an error m
+            y = x + feat
         y = self.conv(y)
         return y
     
@@ -265,6 +266,7 @@ class CPnet(nn.Module):
         torch.save(self.state_dict(), filename)
 
     def load_model(self, filename, cpu=False):
+        
         if not cpu:
             self.load_state_dict(torch.load(filename))
         else:
@@ -274,5 +276,9 @@ class CPnet(nn.Module):
                           self.residual_on,
                           self.style_on,
                           self.concatenation,
-                          self.mkldnn)
+                          self.mkldnn,
+                          self.dim,
+                          self.checkpoint,
+                          self.do_dropout,
+                          self.kernel_size)
             self.load_state_dict(torch.load(filename, map_location=torch.device('cpu')))

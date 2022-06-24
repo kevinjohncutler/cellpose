@@ -7,6 +7,8 @@ from pyqtgraph import Point
 import numpy as np
 import pathlib
 
+import superqt
+
 class TrainWindow(QDialog):
     def __init__(self, parent, model_strings):
         super().__init__(parent)
@@ -74,9 +76,11 @@ def make_quadrants(parent, yp):
     """ make quadrant buttons """
     parent.quadbtns = QButtonGroup(parent)
     for b in range(9):
-        btn = QuadButton(b, ' '+str(b+1), parent)
+        btn = QuadButton(b, ''+str(b+1), parent)
+
         parent.quadbtns.addButton(btn, b)
-        parent.l0.addWidget(btn, yp + parent.quadbtns.button(b).ypos, 5+parent.quadbtns.button(b).xpos, 1, 1)
+        parent.l0.addWidget(btn, yp + parent.quadbtns.button(b).ypos, 
+                            5+parent.quadbtns.button(b).xpos, 1, 1)
         btn.setEnabled(True)
         b += 1
     parent.quadbtns.setExclusive(True)
@@ -91,9 +95,12 @@ class QuadButton(QPushButton):
         self.setText(Text)
         self.setCheckable(True)
         self.setStyleSheet(parent.styleUnpressed)
-        self.setFont(QtGui.QFont("Arial", 8, QtGui.QFont.Bold))
+        # self.setFont(QtGui.QFont("Arial", 8, QtGui.QFont.Bold))
         self.resize(self.minimumSizeHint())
-        self.setMaximumWidth(22)
+        self.setMaximumWidth(30)
+        self.setMaximumHeight(30)
+
+
         self.xpos = bid%3
         self.ypos = int(np.floor(bid/3))
         self.clicked.connect(lambda: self.press(parent, bid))
@@ -111,44 +118,70 @@ class QuadButton(QPushButton):
         parent.p0.setYRange(self.yrange[0], self.yrange[1])
         parent.show()
 
+def QDoubleSpinBox_style():
+    return  """QDoubleSpinBox
+            {
+            border : 2px solid black;
+            background : white;
+            }
+            QDoubleSpinBox::hover
+            {
+            border : 2px solid green;
+            background : lightgreen;
+            }
+            QDoubleSpinBox::up-arrow
+            {
+            border : 1px solid black;
+            background : blue;
+            }
+            QDoubleSpinBox::down-arrow
+            {
+            border : 1px solid black;
+            background : red;
+            }"""
+
 def horizontal_slider_style():
-    return """QSlider::groove:horizontal {
-            border: 1px solid #bbb;
-            background: black;
-            height: 10px;
-            border-radius: 4px;
+    QSS = """
+    
+            /* qdarktheme sets this and messes things up */
+            QSlider::groove {}
+            
+            /* These  are necessary for theme compatibility */
+            QSlider{
+                background-color: none;
+            } 
+            QSlider::add-page:vertical {
+                background: none;
+                border: none;
+            }
+            QSlider::add-page:horizontal {
+                background: none;
+                border: none;
             }
 
-            QSlider::sub-page:horizontal {
-            background: qlineargradient(x1: 0, y1: 0,    x2: 0, y2: 1,
-                stop: 0 black, stop: 1 rgb(150,255,150));
-            background: qlineargradient(x1: 0, y1: 0.2, x2: 1, y2: 1,
-                stop: 0 black, stop: 1 rgb(150,255,150));
-            border: 1px solid #777;
-            height: 10px;
+            
+            QSlider::groove:horizontal {
+            border: 1px solid #bbb;
+            background: black;
+            height: 4px;
             border-radius: 4px;
             }
 
             QSlider::add-page:horizontal {
             background: black;
             border: 1px solid #777;
-            height: 10px;
+            height: 4px;
             border-radius: 4px;
             }
 
             QSlider::handle:horizontal {
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                stop:0 #eee, stop:1 #ccc);
             border: 1px solid #777;
             width: 13px;
-            margin-top: -2px;
-            margin-bottom: -2px;
             border-radius: 4px;
+            height: 40px;
             }
 
             QSlider::handle:horizontal:hover {
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                stop:0 #fff, stop:1 #ddd);
             border: 1px solid #444;
             border-radius: 4px;
             }
@@ -167,7 +200,100 @@ def horizontal_slider_style():
             background: #eee;
             border: 1px solid #aaa;
             border-radius: 4px;
+            
+            QSlider::sub-page:horizontal {
+                background: none;
+            }
+    
+            /*styling the rangeslider bar color*/
+            QRangeSlider {
+                qproperty-barColor: #eee;
+            }
+            QLabeledRangeSlider {
+                qproperty-barColor: red;
+            }
+
             }"""
+    QSS =  """
+                /* Added for compatibility with superqt */
+
+                /* These two are particularly necessary */
+                QSlider{
+                 background-color: none;
+                } 
+
+                QSlider::add-page:vertical {
+                  background: none;
+                  border: none;
+                }
+
+                QSlider::add-page:horizontal {
+                  background: none;
+                  border: none;
+                }
+
+                /* qdarktheme sets this and messes things up */
+                QSlider::groove {}
+                
+                QSlider::groove:horizontal {
+                    background: black;
+                    height: 4px;
+                    border-radius: 4px;
+                    border: 1px solid #777;
+                }
+
+                QSlider::sub-page:horizontal {
+                    background: #eee;
+                }
+                
+                QRangeSlider {
+                    qproperty-barColor: #eee;
+                }
+                
+                QSlider::handle:horizontal {
+                    border: 1px solid #777;
+                    width: 7px;
+                    border-radius: 4px;
+                    height: 40px;
+                }
+
+                QSlider::handle:horizontal:hover {
+                border: 1px solid #444;
+                border-radius: 4px;
+                }
+
+                /* QSlider::sub-page:horizontal:disabled {
+                background: #bbb;
+                border-color: #999;
+                }
+
+                QSlider::add-page:horizontal:disabled {
+                background: #eee;
+                border-color: #999;
+                }
+
+                QSlider::handle:horizontal:disabled {
+                background: #eee;
+                border: 1px solid #aaa;
+                border-radius: 4px;
+                
+                QSlider::groove:horizontal {
+                border: 1px solid #bbb;
+                background: black;
+                height: 4px;
+                border-radius: 4px;
+                }
+
+                QSlider::add-page:horizontal {
+                background: black;
+                border: 1px solid #777;
+                height: 4px;
+                border-radius: 4px;
+                } */
+
+
+            """
+    return QSS
 
 class ExampleGUI(QDialog):
     def __init__(self, parent=None):
@@ -315,15 +441,15 @@ class TypeRadioButtons(QButtonGroup):
         #self.buttons.
 
     def btnpress(self, parent):
-       b = self.checkedId()
-       self.parent.cell_type = b
+        b = self.checkedId()
+        self.parent.cell_type = b
 
 class RGBRadioButtons(QButtonGroup):
     def __init__(self, parent=None, row=0, col=0):
         super(RGBRadioButtons, self).__init__()
         parent.color = 0
         self.parent = parent
-        self.bstr = ["image", "gradXY", "cellprob", "gradZ"]
+        self.bstr = ["image", "gradXY", "cellprob/distance", "gradZ"]
         #self.buttons = QButtonGroup()
         self.dropdown = []
         for b in range(len(self.bstr)):
@@ -334,15 +460,15 @@ class RGBRadioButtons(QButtonGroup):
                 button.setChecked(True)
             self.addButton(button, b)
             button.toggled.connect(lambda: self.btnpress(parent))
-            self.parent.l0.addWidget(button, row+b,col,1,3)
+            self.parent.l0.addWidget(button, row+b,col,1,1)
         self.setExclusive(True)
         #self.buttons.
 
     def btnpress(self, parent):
-       b = self.checkedId()
-       self.parent.view = b
-       if self.parent.loaded:
-           self.parent.update_plot()
+        b = self.checkedId()
+        self.parent.view = b
+        if self.parent.loaded:
+            self.parent.update_plot()
 
 
 class ViewBoxNoRightDrag(pg.ViewBox):
@@ -636,11 +762,11 @@ class RangeSlider(QSlider):
                 }")
 
 
-        #self.opt = QStyleOptionSlider()
+        # self.opt = QStyleOptionSlider()
         #self.opt.orientation=QtCore.Qt.Vertical
-        #self.initStyleOption(self.opt)
+        # self.initStyleOption(self.opt)
         # 0 for the low, 1 for the high, -1 for both
-        self.active_slider = 0
+        self.active_slider = -1
         self.parent = parent
 
     def level_change(self):
@@ -668,6 +794,8 @@ class RangeSlider(QSlider):
         # based on http://qt.gitorious.org/qt/qt/blobs/master/src/gui/widgets/qslider.cpp
         painter = QPainter(self)
         style = QApplication.style()
+        # self.setStyleSheet("")
+        
 
         for i, value in enumerate([self._low, self._high]):
             opt = QStyleOptionSlider()
@@ -676,7 +804,9 @@ class RangeSlider(QSlider):
             # Only draw the groove for the first slider so it doesn't get drawn
             # on top of the existing ones every time
             if i == 0:
-                opt.subControls = QStyle.SC_SliderHandle#QStyle.SC_SliderGroove | QStyle.SC_SliderHandle
+                # opt.subControls = QStyle.SC_SliderHandle#QStyle.SC_SliderGroove | QStyle.SC_SliderHandle
+                opt.subControls = QStyle.SC_SliderGroove | QStyle.SC_SliderHandle
+                
             else:
                 opt.subControls = QStyle.SC_SliderHandle
 
@@ -779,6 +909,204 @@ class RangeSlider(QSlider):
         opt = QStyleOptionSlider()
         self.initStyleOption(opt)
         style = QApplication.style()
+        # style = QCommonStyle()
+        # self.setStyleSheet("")
+        
+
+        gr = style.subControlRect(style.CC_Slider, opt, style.SC_SliderGroove, self)
+        sr = style.subControlRect(style.CC_Slider, opt, style.SC_SliderHandle, self)
+
+        if self.orientation() == QtCore.Qt.Horizontal:
+            slider_length = sr.width()
+            slider_min = gr.x()
+            slider_max = gr.right() - slider_length + 1
+        else:
+            slider_length = sr.height()
+            slider_min = gr.y()
+            slider_max = gr.bottom() - slider_length + 1
+
+        return style.sliderValueFromPosition(self.minimum(), self.maximum(),
+                                             pos-slider_min, slider_max-slider_min,
+                                             opt.upsideDown)
+
+    
+class LabeledRangeSlider(superqt.QLabeledRangeSlider):
+    """ A slider for ranges.
+
+        This class provides a dual-slider for ranges, where there is a defined
+        maximum and minimum, as is a normal slider, but instead of having a
+        single slider value, there are 2 slider values.
+
+        This class emits the same signals as the QSlider base class, with the
+        exception of valueChanged
+
+        Found this slider here: https://www.mail-archive.com/pyqt@riverbankcomputing.com/msg22889.html
+        and modified it
+    """
+    def __init__(self, parent=None, *args):
+        super(LabeledRangeSlider, self).__init__(*args)
+
+        self._low = self.minimum()
+        self._high = self.maximum()
+
+        self.pressed_control = QStyle.SC_None
+        self.hover_control = QStyle.SC_None
+        self.click_offset = 0
+
+        self.setOrientation(QtCore.Qt.Horizontal)
+        self.setTickPosition(QSlider.TicksRight)
+
+
+        # self.opt = QStyleOptionSlider()
+        #self.opt.orientation=QtCore.Qt.Vertical
+        # self.initStyleOption(self.opt)
+        # 0 for the low, 1 for the high, -1 for both
+        self.active_slider = -1
+        self.parent = parent
+
+    def level_change(self):
+        if self.parent is not None:
+            if self.parent.loaded:
+                self.parent.ops_plot = {'saturation': [self._low, self._high]}
+                self.parent.saturation[self.parent.currentZ] = [self._low, self._high]
+                self.parent.update_plot()
+
+    def low(self):
+        return self._low
+
+    def setLow(self, low):
+        self._low = low
+        self.update()
+
+    def high(self):
+        return self._high
+
+    def setHigh(self, high):
+        self._high = high
+        self.update()
+
+    def paintEvent(self, event):
+        # based on http://qt.gitorious.org/qt/qt/blobs/master/src/gui/widgets/qslider.cpp
+        painter = QPainter(self)
+        style = QApplication.style()
+        # self.setStyleSheet("")
+        
+
+        for i, value in enumerate([self._low, self._high]):
+            opt = QStyleOptionSlider()
+            self.initStyleOption(opt)
+
+            # Only draw the groove for the first slider so it doesn't get drawn
+            # on top of the existing ones every time
+            if i == 0:
+                opt.subControls = QStyle.SC_SliderHandle#QStyle.SC_SliderGroove | QStyle.SC_SliderHandle
+                # opt.subControls = QStyle.SC_SliderGroove | QStyle.SC_SliderHandle
+                
+            else:
+                opt.subControls = QStyle.SC_SliderHandle
+
+            if self.tickPosition() != self.NoTicks:
+                opt.subControls |= QStyle.SC_SliderTickmarks
+
+            if self.pressed_control:
+                opt.activeSubControls = self.pressed_control
+                opt.state |= QStyle.State_Sunken
+            else:
+                opt.activeSubControls = self.hover_control
+
+            opt.sliderPosition = value
+            opt.sliderValue = value
+            style.drawComplexControl(QStyle.CC_Slider, opt, painter, self)
+
+
+    def mousePressEvent(self, event):
+        event.accept()
+
+        style = QApplication.style()
+        button = event.button()
+        # In a normal slider control, when the user clicks on a point in the
+        # slider's total range, but not on the slider part of the control the
+        # control would jump the slider value to where the user clicked.
+        # For this control, clicks which are not direct hits will slide both
+        # slider parts
+        if button:
+            opt = QStyleOptionSlider()
+            self.initStyleOption(opt)
+
+            self.active_slider = -1
+
+            for i, value in enumerate([self._low, self._high]):
+                opt.sliderPosition = value
+                hit = style.hitTestComplexControl(style.CC_Slider, opt, event.pos(), self)
+                if hit == style.SC_SliderHandle:
+                    self.active_slider = i
+                    self.pressed_control = hit
+
+                    self.triggerAction(self.SliderMove)
+                    self.setRepeatAction(self.SliderNoAction)
+                    self.setSliderDown(True)
+
+                    break
+
+            if self.active_slider < 0:
+                self.pressed_control = QStyle.SC_SliderHandle
+                self.click_offset = self.__pixelPosToRangeValue(self.__pick(event.pos()))
+                self.triggerAction(self.SliderMove)
+                self.setRepeatAction(self.SliderNoAction)
+        else:
+            event.ignore()
+
+    def mouseMoveEvent(self, event):
+        if self.pressed_control != QStyle.SC_SliderHandle:
+            event.ignore()
+            return
+
+        event.accept()
+        new_pos = self.__pixelPosToRangeValue(self.__pick(event.pos()))
+        opt = QStyleOptionSlider()
+        self.initStyleOption(opt)
+
+        if self.active_slider < 0:
+            offset = new_pos - self.click_offset
+            self._high += offset
+            self._low += offset
+            if self._low < self.minimum():
+                diff = self.minimum() - self._low
+                self._low += diff
+                self._high += diff
+            if self._high > self.maximum():
+                diff = self.maximum() - self._high
+                self._low += diff
+                self._high += diff
+        elif self.active_slider == 0:
+            if new_pos >= self._high:
+                new_pos = self._high - 1
+            self._low = new_pos
+        else:
+            if new_pos <= self._low:
+                new_pos = self._low + 1
+            self._high = new_pos
+
+        self.click_offset = new_pos
+        self.update()
+
+    def mouseReleaseEvent(self, event):
+        self.level_change()
+
+    def __pick(self, pt):
+        if self.orientation() == QtCore.Qt.Horizontal:
+            return pt.x()
+        else:
+            return pt.y()
+
+
+    def __pixelPosToRangeValue(self, pos):
+        opt = QStyleOptionSlider()
+        self.initStyleOption(opt)
+        style = QApplication.style()
+        # style = QCommonStyle()
+        # self.setStyleSheet("")
+        
 
         gr = style.subControlRect(style.CC_Slider, opt, style.SC_SliderGroove, self)
         sr = style.subControlRect(style.CC_Slider, opt, style.SC_SliderHandle, self)

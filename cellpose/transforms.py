@@ -6,7 +6,7 @@ import logging
 transforms_logger = logging.getLogger(__name__)
 
 from . import dynamics, utils
-
+import itertools # ND tiling
 
 # import omnipose, edt, fastremap
 # OMNI_INSTALLED = True
@@ -22,10 +22,24 @@ def _taper_mask(ly=224, lx=224, sig=7.5):
     bsize = max(224, max(ly, lx))
     xm = np.arange(bsize)
     xm = np.abs(xm - xm.mean())
-    mask = 1/(1 + np.exp((xm - (bsize/2-20)) / sig))
+    mask = 1/(1 + np.exp((xm - (bsize/2-20)) / sig)) 
     mask = mask * mask[:, np.newaxis]
     mask = mask[bsize//2-ly//2 : bsize//2+ly//2+ly%2, 
                 bsize//2-lx//2 : bsize//2+lx//2+lx%2]
+    return mask
+
+def _taper_mask_ND(shape=(224,224), sig=7.5):
+    dim = len(shape)
+    bsize = max(shape)
+    xm = np.arange(bsize)
+    xm = np.abs(xm - xm.mean())
+    # 1D distribution 
+    mask = 1/(1 + np.exp((xm - (bsize/2-20)) / sig)) 
+    # extend to ND
+    for j in range(dim-1):
+        mask = mask * mask[..., np.newaxis]
+    slc = tuple([slice(bsize//2-s//2,bsize//2+s//2+s%2) for s in shape])
+    mask = mask[slc]
     return mask
 
 def unaugment_tiles(y, unet=False):
@@ -100,6 +114,39 @@ def average_tiles(y, ysub, xsub, Ly, Lx):
     for j in range(len(ysub)):
         yf[:, ysub[j][0]:ysub[j][1],  xsub[j][0]:xsub[j][1]] += y[j] * mask
         Navg[ysub[j][0]:ysub[j][1],  xsub[j][0]:xsub[j][1]] += mask
+    yf /= Navg
+    return yf
+
+def average_tiles_ND(y,subs,shape):
+    """ average results of network over tiles
+
+    Parameters
+    -------------
+
+    y: float, [ntiles x nclasses x bsize x bsize]
+        output of cellpose network for each tile
+
+    subs : list
+        list of slices for each subtile 
+
+    shape : int, list or tuple
+        shape of pre-tiled image (may be larger than original image if
+        image size is less than bsize)
+
+    Returns
+    -------------
+
+    yf: float32, [nclasses x Ly x Lx]
+        network output averaged over tiles
+
+    """
+    Navg = np.zeros(shape)
+    yf = np.zeros((y.shape[1],)+shape, np.float32)
+    # taper edges of tiles
+    mask = _taper_mask_ND(y.shape[-len(shape):])
+    for j,slc in enumerate(subs):
+        yf[(Ellipsis,)+slc] += y[j] * mask
+        Navg[slc] += mask
     yf /= Navg
     return yf
 
@@ -194,6 +241,99 @@ def make_tiles(imgi, bsize=224, augment=False, tile_overlap=0.1):
                 IMG[j, i] = imgi[:, ysub[-1][0]:ysub[-1][1],  xsub[-1][0]:xsub[-1][1]]
         
     return IMG, ysub, xsub, Ly, Lx
+
+
+def make_tiles_ND(imgi, bsize=224, augment=False, tile_overlap=0.1):
+    """ make tiles of image to run at test-time
+
+    if augmented, tiles are flipped and tile_overlap=2.
+        * original
+        * flipped vertically
+        * flipped horizontally
+        * flipped vertically and horizontally
+
+    Parameters
+    ----------
+    imgi : float32
+        array that's nchan x Ly x Lx
+
+    bsize : float (optional, default 224)
+        size of tiles
+
+    augment : bool (optional, default False)
+        flip tiles and set tile_overlap=2.
+
+    tile_overlap: float (optional, default 0.1)
+        fraction of overlap of tiles
+
+    Returns
+    -------
+    IMG : float32
+        array that's ntiles x nchan x bsize x bsize
+
+    ysub : list
+        list of arrays with start and end of tiles in Y of length ntiles
+
+    xsub : list
+        list of arrays with start and end of tiles in X of length ntiles
+
+    
+    """
+
+    # nchan, Ly, Lx = imgi.shape
+    nchan = imgi.shape[0]
+    shape = imgi.shape[1:]
+    dim = len(shape)
+    if augment:
+        bsize = np.int32(bsize)
+        # pad if image smaller than bsize
+        if Ly<bsize:
+            imgi = np.concatenate((imgi, np.zeros((nchan, bsize-Ly, Lx))), axis=1)
+            Ly = bsize
+        if Lx<bsize:
+            imgi = np.concatenate((imgi, np.zeros((nchan, Ly, bsize-Lx))), axis=2)
+        Ly, Lx = imgi.shape[-2:]
+        # tiles overlap by half of tile size
+        ny = max(2, int(np.ceil(2. * Ly / bsize)))
+        nx = max(2, int(np.ceil(2. * Lx / bsize)))
+        ystart = np.linspace(0, Ly-bsize, ny).astype(int)
+        xstart = np.linspace(0, Lx-bsize, nx).astype(int)
+
+        ysub = []
+        xsub = []
+
+        # flip tiles so that overlapping segments are processed in rotation
+        IMG = np.zeros((len(ystart), len(xstart), nchan,  bsize, bsize), np.float32)
+        for j in range(len(ystart)):
+            for i in range(len(xstart)):
+                ysub.append([ystart[j], ystart[j]+bsize])
+                xsub.append([xstart[i], xstart[i]+bsize])
+                IMG[j, i] = imgi[:, ysub[-1][0]:ysub[-1][1],  xsub[-1][0]:xsub[-1][1]]
+                # flip tiles to allow for augmentation of overlapping segments
+                if j%2==0 and i%2==1:
+                    IMG[j,i] = IMG[j,i, :,::-1, :]
+                elif j%2==1 and i%2==0:
+                    IMG[j,i] = IMG[j,i, :,:, ::-1]
+                elif j%2==1 and i%2==1:
+                    IMG[j,i] = IMG[j,i,:, ::-1, ::-1]
+    else:
+        tile_overlap = min(0.5, max(0.05, tile_overlap))
+        # bsizeY, bsizeX = min(bsize, Ly), min(bsize, Lx)
+        # B = [np.int32(min(b,s)) for s,b in zip(im.shape,bsize)] if bzise variable
+        bbox = tuple([np.int32(min(bsize,s)) for s in shape])
+        
+        # tiles overlap by 10% tile size
+        ntyx = [1 if s<=bsize else int(np.ceil((1.+2*tile_overlap) * s / bsize)) for s in shape]
+        start = [np.linspace(0, s-b, n).astype(int) for s,b,n in zip(shape,bbox,ntyx)]
+
+        intervals = [[slice(si,si+bsize) for si in s] for s in start]
+        subs = list(itertools.product(*intervals))
+        
+        # IMG = np.zeros((len(ystart), len(xstart), nchan,  bsizeY, bsizeX), np.float32)
+        # IMG = np.zeros(tuple([len(s) for s in start])+(nchan,)+bbox, np.float32)
+        IMG = np.stack([imgi[(Ellipsis,)+slc] for slc in subs])
+        
+    return IMG, subs, shape
 
 # needs to have a wider range to avoid weird effects with few cells in frame
 # also turns out previous formulation can give negative numbers, messes up log operations etc. 
@@ -295,6 +435,7 @@ def convert_image(x, channels, channel_axis=None, z_axis=None,
     # this one must be the cuplrit... no, in fact it is not 
     if channel_axis is None:
         x = move_min_dim(x)
+        channel_axis = -1 # moves to last 
 
     # print('shape04',x.shape)
         
@@ -307,14 +448,16 @@ def convert_image(x, channels, channel_axis=None, z_axis=None,
         if len(channels) < 2:
             transforms_logger.critical('ERROR: two channels not specified')
             raise ValueError('ERROR: two channels not specified') 
-        x = reshape(x, channels=channels)
+        x = reshape(x, channels=channels, channel_axis=channel_axis)
         # print('AAA',x.shape,channels)
     else:
         # print('BBB',do_3D,x.ndim,x.shape,nchan)
         # code above put channels last, so its making sure nchan matches below
         # not sure when this condition would be met, but it conflicts with 3D
         if x.shape[-1] > nchan and x.ndim>dim:
-            transforms_logger.warning('WARNING: more than %d channels given, use "channels" input for specifying channels - just using first %d channels to run processing'%(nchan,nchan))
+            transforms_logger.warning(('WARNING: more than %d channels given, use '
+                                       '"channels" input for specifying channels -'
+                                       'just using first %d channels to run processing')%(nchan,nchan))
             x = x[...,:nchan]
         
         if not do_3D and x.ndim>3 and dim==2: # error should only be thrown for 2D mode 
@@ -328,7 +471,7 @@ def convert_image(x, channels, channel_axis=None, z_axis=None,
             
     if normalize or invert:
         x = normalize_img(x, invert=invert, omni=omni)
-        
+
     return x
 
 def reshape(data, channels=[0,0], chan_first=False, channel_axis=0):
@@ -346,8 +489,8 @@ def reshape(data, channels=[0,0], chan_first=False, channel_axis=0):
         For instance, to train on grayscale images, input [0,0]. To train on images with cells
         in green and nuclei in blue, input [2,3].
 
-    invert : bool
-        invert intensities
+    channel_axis : int, default 0
+        the axis that corresponds to channels (usually 0 or -1)
 
     Returns
     -------

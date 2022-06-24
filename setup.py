@@ -12,29 +12,29 @@ gui_deps = [
         'pyqtgraph==0.11.0rc0', 
         'pyqt5', 
         'pyqt5.sip',
-        'google-cloud-storage'
+        'google-cloud-storage',
+        'qdarktheme'
         ]
 
 docs_deps = [
         'sphinx>=3.0',
         'sphinxcontrib-apidoc',
         'sphinx_rtd_theme',
-      ]
+        ]
 
 omni_deps = [
         'scikit-image', 
         'scikit-learn',
         'edt',
         'torch_optimizer', 
-        'ncolor',
-        'torch_optimizer'
+        'ncolor'
         ]
 
 distributed_deps = [
         'dask',
         'dask_image',
         'scikit-learn',
-]
+        ]
 
 try:
     import torch

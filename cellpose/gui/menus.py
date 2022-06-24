@@ -144,10 +144,10 @@ def omnimenu(parent):
     omni_menu = main_menu.addMenu("&Omnipose")
     # use omnipose mask recontruction
     parent.omni = QAction('use Omnipose mask recontruction algorithm (fix over-segmentation)', parent, checkable=True)
-    parent.omni.setChecked(False)
+    parent.omni.setChecked(True)
     omni_menu.addAction(parent.omni)
 
     # use DBSCAN clustering
     parent.cluster = QAction('force DBSCAN clustering when omni is enabled', parent, checkable=True)
-    parent.cluster.setChecked(False)
+    parent.cluster.setChecked(True)
     omni_menu.addAction(parent.cluster)

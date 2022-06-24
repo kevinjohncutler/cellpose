@@ -1,8 +1,20 @@
 # <b>Cellpose backend for Omnipose</b>
 
-This fork of Cellpose continues the generalizations first introduced by Omnipose. Because the authors of Cellpose will not support Omnipose in Cellpose 2.0, this fork will continue to be maintained by the author of Omnipose ([@kevinjohncutler](https://github.com/kevinjohncutler)), with the current goal of updating to support Cellpose 2.0 when it is released and if it shows substantial improvements. For now, I will be providing addtional updates and bugfixes based on Cellpose 1.0 from January 2022. This fork will remain backwards-compatible with Cellpose. See the main Cellpose repo for basic Cellpose usage, and the Omnipose repo for Omnipose-specific settings. 
+This fork of Cellpose continues the generalizations first introduced by Omnipose. Because Omnipose will not be incorporated into Cellpose 2.0, this fork will continue to be maintained by the author of Omnipose ([@kevinjohncutler](https://github.com/kevinjohncutler)), with the current goal of updating to support Cellpose 2.0 when it is released and if it shows substantial improvements. For now, I will be providing addtional updates and bugfixes based on Cellpose 1.0 from January 2022. This fork will remain backwards-compatible with Cellpose. See the main Cellpose repo for basic Cellpose usage, and the Omnipose repo for Omnipose-specific settings. 
 
 The main generalization introduced in this fork is true 3D segmentation - that is, direct prediction of 3D flow field as opposed to merging flow components from 2D predictions. Use the `--dim` flag to specify whether or not you want to train/evaluate on 2D or 3D volumes. 
+
+The GUI has also been greatly improved with bugfixes and additional features. The most important new feature is the ability to easily copy the parameters for replicating the GUI results in a Jupyter Notebook. This work is ongoing.
+
+Future GUI goals:
+* optional parameter output in CLI format (not just function API for python scripts)
+* time lapse stack handling 
+* 3D Omnipose options 
+* add boundary output for visualization
+* allow gamma and percentile range to be segmentation parameters (just for visualization now)
+* give in to my OCD around GUI elements and make it prettier 
+
+This version of the GUI defaults to Omnipose parameters and models.
 
 
 ### Run cellpose without local python installation

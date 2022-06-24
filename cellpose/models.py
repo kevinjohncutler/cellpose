@@ -4,6 +4,8 @@ import numpy as np
 from tqdm import trange, tqdm
 from urllib.parse import urlparse
 import torch
+from torch import nn, distributed
+# from torch.nn.parallel import DistributedDataParallel as DDP
 
 from scipy.ndimage import gaussian_filter, zoom
 
@@ -18,11 +20,14 @@ _MODEL_URL = 'https://www.cellpose.org/models'
 _MODEL_DIR_ENV = os.environ.get("CELLPOSE_LOCAL_MODELS_PATH")
 _MODEL_DIR_DEFAULT = pathlib.Path.home().joinpath('.cellpose', 'models')
 MODEL_DIR = pathlib.Path(_MODEL_DIR_ENV) if _MODEL_DIR_ENV else _MODEL_DIR_DEFAULT
+
 if OMNI_INSTALLED:
     import omnipose
-    MODEL_NAMES = ['cyto','nuclei','cyto2','bact','bact_omni','cyto2_omni']
+    from omnipose.core import OMNI_MODELS
 else:
-    MODEL_NAMES = ['cyto','nuclei','cyto2']
+    OMNI_MODELS = []
+    
+MODEL_NAMES = ['cyto','nuclei','cyto2']+OMNI_MODELS
 
 def model_path(model_type, model_index, use_torch):
     torch_str = 'torch' if use_torch else ''
@@ -267,7 +272,8 @@ class Cellpose():
         if estimate_size and self.pretrained_size is not None and not do_3D and x[0].ndim < 4:
             tic = time.time()
             models_logger.info('~~~ ESTIMATING CELL DIAMETER(S) ~~~')
-            diams, _ = self.sz.eval(x, channels=channels, channel_axis=channel_axis, invert=invert, batch_size=batch_size, 
+            diams, _ = self.sz.eval(x, channels=channels, channel_axis=channel_axis, 
+                                    invert=invert, batch_size=batch_size, 
                                     augment=augment, tile=tile, normalize=normalize)
             rescale = self.diam_mean / np.array(diams)
             diameter = None
@@ -357,7 +363,6 @@ class CellposeModel(UnetModel):
 
     """
     
-    # still need to put the omni model trained on cellpose data into the right folder with the right name with the size model 
     def __init__(self, gpu=False, pretrained_model=False,
                  model_type=None, net_avg=True, torch=True,
                  diam_mean=30., device=None,
@@ -384,7 +389,6 @@ class CellposeModel(UnetModel):
         self.dropout = dropout
         self.kernel_size = kernel_size
         # channel axis might be useful here 
-        
         if model_type is not None or (pretrained_model and not os.path.exists(pretrained_model[0])):
             pretrained_model_string = model_type 
             if ~np.any([pretrained_model_string == s for s in MODEL_NAMES]): #also covers None case
@@ -435,9 +439,17 @@ class CellposeModel(UnetModel):
                          dim=self.dim, checkpoint=self.checkpoint, dropout=self.dropout,
                          kernel_size=self.kernel_size)
 
+
         self.unet = False
         self.pretrained_model = pretrained_model
         if self.pretrained_model and len(self.pretrained_model)==1:
+            
+            # # dataparallel
+            # if self.torch and self.gpu:
+            #     net = self.net.module
+            # else:
+            #     net = self.net
+            
             self.net.load_model(self.pretrained_model[0], cpu=(not self.gpu))
             if not self.torch:
                 self.net.collect_params().grad_req = 'null'
@@ -447,6 +459,16 @@ class CellposeModel(UnetModel):
                                                                                    ostr[style_on],
                                                                                    ostr[concatenation],
                                                                                    omnistr[omni]) 
+        
+        if self.torch and gpu:
+            self.net = nn.DataParallel(self.net)
+            
+            # distributed.init_process_group()
+            # distributed.launch
+            # distributed.init_process_group(backend='nccl')
+            # self.net = nn.parallel.DistributedDataParallel(self.net)
+            
+            
     
     def eval(self, x, batch_size=8, channels=None, channel_axis=None, 
              z_axis=None, normalize=True, invert=False, 
@@ -454,7 +476,7 @@ class CellposeModel(UnetModel):
              augment=False, tile=True, tile_overlap=0.1,
              resample=True, interp=True, cluster=False,
              flow_threshold=0.4, mask_threshold=0.0, diam_threshold=12.,
-             cellprob_threshold=None, dist_threshold=None,
+             cellprob_threshold=None, dist_threshold=None, flow_factor=5.0,
              compute_masks=True, min_size=15, stitch_threshold=0.0, progress=None, omni=False, 
              calc_trace=False, verbose=False, transparency=False, loop_run=False, model_loaded=False):
         """
@@ -599,13 +621,13 @@ class CellposeModel(UnetModel):
             for i in iterator:
                 maski, stylei, flowi = self.eval(x[i], 
                                                  batch_size=batch_size, 
-                                                 channels=channels[i] if (len(channels)==len(x) and 
+                                                 channels= channels if channels is None else channels[i] if (len(channels)==len(x) and 
                                                                           (isinstance(channels[i], list) or isinstance(channels[i], np.ndarray)) and
                                                                           len(channels[i])==2) else channels, 
                                                  channel_axis=channel_axis, 
                                                  z_axis=z_axis, 
                                                  normalize=normalize, 
-                                                 invert=invert, 
+                                                 invert=invert,
                                                  rescale=rescale[i] if isinstance(rescale, list) or isinstance(rescale, np.ndarray) else rescale,
                                                  diameter=diameter[i] if isinstance(diameter, list) or isinstance(diameter, np.ndarray) else diameter, 
                                                  do_3D=do_3D, 
@@ -617,9 +639,10 @@ class CellposeModel(UnetModel):
                                                  resample=resample, 
                                                  interp=interp,
                                                  cluster=cluster,
-                                                 flow_threshold=flow_threshold, 
                                                  mask_threshold=mask_threshold, 
                                                  diam_threshold=diam_threshold,
+                                                 flow_threshold=flow_threshold, 
+                                                 flow_factor=flow_factor,
                                                  compute_masks=compute_masks, 
                                                  min_size=min_size, 
                                                  stitch_threshold=stitch_threshold, 
@@ -637,13 +660,20 @@ class CellposeModel(UnetModel):
         
         else:
             if not model_loaded and (isinstance(self.pretrained_model, list) and not net_avg and not loop_run):
-                self.net.load_model(self.pretrained_model[0], cpu=(not self.gpu))
+                
+                # whether or not we are using dataparallel 
+                if self.torch and self.gpu:
+                    net = self.net.module
+                else:
+                    net = self.net
+                    
+                net.load_model(self.pretrained_model[0], cpu=(not self.gpu))
                 if not self.torch:
-                    self.net.collect_params().grad_req = 'null'
+                    net.collect_params().grad_req = 'null'
 
             x = transforms.convert_image(x, channels, channel_axis=channel_axis, z_axis=z_axis,
-                                         do_3D=(do_3D or stitch_threshold>0), normalize=False, invert=False, nchan=self.nchan, dim=self.dim, omni=omni)
-            
+                                         do_3D=(do_3D or stitch_threshold>0), normalize=False, 
+                                         invert=False, nchan=self.nchan, dim=self.dim, omni=omni)
             if x.ndim < self.dim+2: # we need nimg x dims x channels, so 2D has 4, 3D has 5, etc. 
                 x = x[np.newaxis]
             
@@ -664,6 +694,7 @@ class CellposeModel(UnetModel):
                                                           mask_threshold=mask_threshold, 
                                                           diam_threshold=diam_threshold,
                                                           flow_threshold=flow_threshold,
+                                                          flow_factor=flow_factor,
                                                           interp=interp,
                                                           cluster=cluster,
                                                           min_size=min_size, 
@@ -680,7 +711,7 @@ class CellposeModel(UnetModel):
     def _run_cp(self, x, compute_masks=True, normalize=True, invert=False,
                 rescale=1.0, net_avg=True, resample=True,
                 augment=False, tile=True, tile_overlap=0.1,
-                mask_threshold=0.0, diam_threshold=12., flow_threshold=0.4, min_size=15,
+                mask_threshold=0.0, diam_threshold=12., flow_threshold=0.4, flow_factor=5.0, min_size=15,
                 interp=True, cluster=False, anisotropy=1.0, do_3D=False, stitch_threshold=0.0,
                 omni=False, calc_trace=False, verbose=False):
         
@@ -691,7 +722,7 @@ class CellposeModel(UnetModel):
         bd, tr = None, None
         if do_3D:
             img = np.asarray(x)
-            if normalize or invert:
+            if normalize or invert: # possibly make normalize a vector of upper-lower values  
                 img = transforms.normalize_img(img, invert=invert, omni=omni)
             yf, styles = self._run_3D(img, rsz=rescale, anisotropy=anisotropy, 
                                       net_avg=net_avg, augment=augment, tile=tile,
@@ -737,15 +768,10 @@ class CellposeModel(UnetModel):
                                            augment=augment, tile=tile,
                                            tile_overlap=tile_overlap)
                 
-                ## Not updated for ND
                 # resample interpolates the network output to native resolution prior to running Euler integration
                 # this means the masks will have no scaling artifacts. We could *upsample* by some factor to make
                 # the clustering etc. work even better, but that is not implemented yet 
                 if resample:
-                    # if self.dim>2:
-                    #     print('WARNING, resample not updated for ND')
-                    # yf = transforms.resize_image(yf, shape[1], shape[2])
-                    
                     # ND version actually gives better results than CV2 in some places. 
                     yf = np.stack([zoom(yf[...,k], shape[1:1+self.dim]/np.array(yf.shape[:2]), order=1) for k in range(yf.shape[-1])],axis=-1)
                     
@@ -772,19 +798,31 @@ class CellposeModel(UnetModel):
             if do_3D:
                 if not (omni and OMNI_INSTALLED):
                     # run cellpose compute_masks
-                    masks, p, tr = dynamics.compute_masks(dP, cellprob, bd, niter=niter, rescale=rescale, resize=None, 
+                    masks, p, tr = dynamics.compute_masks(dP, cellprob, bd, niter=niter, resize=None, 
                                                           mask_threshold=mask_threshold,
-                                                          diam_threshold=diam_threshold, flow_threshold=flow_threshold,
+                                                          diam_threshold=diam_threshold, 
+                                                          flow_threshold=flow_threshold,
                                                           interp=interp, do_3D=do_3D, min_size=min_size, verbose=verbose,
                                                           use_gpu=self.gpu, device=self.device, nclasses=self.nclasses)
                 else:
                     # run omnipose compute_masks
-                    masks, p, tr = omnipose.core.compute_masks(dP, cellprob, bd, niter=niter, mask_threshold=mask_threshold,
-                                                               flow_threshold=flow_threshold, diam_threshold=diam_threshold,
-                                                               interp=interp, do_3D=do_3D, cluster=cluster, resize=None,
-                                                               calc_trace=calc_trace, verbose=verbose,
-                                                               use_gpu=self.gpu, device=self.device, 
-                                                               nclasses=self.nclasses, dim=self.dim)
+                    masks, p, tr = omnipose.core.compute_masks(dP, cellprob, bd,
+                                                               do_3D=do_3D,
+                                                               niter=niter,
+                                                               resize=None,
+                                                               min_size=min_size, 
+                                                               mask_threshold=mask_threshold,  
+                                                               diam_threshold=diam_threshold,
+                                                               flow_threshold=flow_threshold, 
+                                                               flow_factor=flow_factor,      
+                                                               interp=interp, 
+                                                               cluster=cluster, 
+                                                               calc_trace=calc_trace, 
+                                                               verbose=verbose,
+                                                               use_gpu=self.gpu, 
+                                                               device=self.device, 
+                                                               nclasses=self.nclasses, 
+                                                               dim=self.dim)
             else:
                 masks, p, tr = [], [], []
                 resize = shape[-(self.dim+1):-1] if not resample else None 
@@ -799,7 +837,7 @@ class CellposeModel(UnetModel):
                         # run omnipose compute_masks
                         
                         # important: resampling means that pixels need to go farther to cluser together;
-                        # niter should be determined by dist, first of all; it currently is already scale for resampling, good! 
+                        # niter should be determined by dist, first of all; it currently is already scaled for resampling, good! 
                         # dP needs to be scaled for magnitude to get pixels to move the same relative distance
                         # eps probably should be left the same if the above are changed 
                         # if resample:
@@ -807,13 +845,23 @@ class CellposeModel(UnetModel):
                             # dP[:,i] /= rescale this does nothign here since I normalize the flow anyway, have to pass in 
                         
                         bdi = bd[i] if bd is not None else None
-                        outputs = omnipose.core.compute_masks(dP[:,i], cellprob[i], bdi, niter=niter, rescale=rescale, resize=resize,
-                                                              mask_threshold=mask_threshold,                                   
-                                                              flow_threshold=flow_threshold, diam_threshold=diam_threshold,
-                                                              interp=interp, cluster=cluster, 
-                                                              calc_trace=calc_trace, verbose=verbose,
-                                                              use_gpu=self.gpu, device=self.device, 
-                                                              nclasses=self.nclasses, dim=self.dim)
+                        outputs = omnipose.core.compute_masks(dP[:,i], cellprob[i], bdi, 
+                                                              niter=niter, 
+                                                              rescale=rescale, 
+                                                              resize=resize,
+                                                              min_size=min_size, 
+                                                              mask_threshold=mask_threshold,   
+                                                              diam_threshold=diam_threshold,
+                                                              flow_threshold=flow_threshold, 
+                                                              flow_factor=flow_factor,             
+                                                              interp=interp, 
+                                                              cluster=cluster, 
+                                                              calc_trace=calc_trace, 
+                                                              verbose=verbose,
+                                                              use_gpu=self.gpu, 
+                                                              device=self.device, 
+                                                              nclasses=self.nclasses, 
+                                                              dim=self.dim) 
                     masks.append(outputs[0])
                     p.append(outputs[1])
                     tr.append(outputs[2])

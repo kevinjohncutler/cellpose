@@ -6,6 +6,8 @@ from natsort import natsorted
 from tqdm import tqdm
 from cellpose import utils, models, io
 
+from .models import MODEL_NAMES
+    
 try:
     from cellpose.gui import gui 
     GUI_ENABLED = True 
@@ -70,7 +72,7 @@ def main():
     input_img_args.add_argument('--invert', action='store_true', help='invert grayscale channel')
     input_img_args.add_argument('--all_channels', action='store_true', help='use all channels in image if using own model and images with special channels')
     input_img_args.add_argument('--dim',
-                                default=2, type=int, help='spatiotemporal dimensions of images (not counting channels). Default: %(default)s') ##
+                                default=2, type=int, help='number of spatiotemporal dimensions of images (not counting channels). Default: %(default)s') ##
     
     # model settings 
     model_args = parser.add_argument_group("model arguments")
@@ -205,10 +207,10 @@ def main():
                     exit()
                     
         device, gpu = models.assign_device((not args.mxnet), args.use_gpu)
-
+        
         #define available model names, right now we have three broad categories 
-        model_names = ['cyto','nuclei','bact','cyto2','bact_omni','cyto2_omni']
-        builtin_model = np.any([args.pretrained_model==s for s in model_names])
+        print('hey',MODEL_NAMES)
+        builtin_model = np.any([args.pretrained_model==s for s in MODEL_NAMES])
         cytoplasmic = 'cyto' in args.pretrained_model
         nuclear = 'nuclei' in args.pretrained_model
         bacterial = 'bact' in args.pretrained_model
@@ -227,7 +229,7 @@ def main():
                           
         omni = check_omni(args.omni) # repeat the above check but factor it for use elsewhere
         if args.omni:
-            print('>>>> Omnipose enabled. See https://raw.githubusercontent.com/MouseLand/cellpose/master/cellpose/omnipose/license.txt for licensing details.')
+            print('>>>> Omnipose enabled. See Omnipose repo for licencing details.')
         
         
         if not args.train and not args.train_size:
@@ -253,18 +255,19 @@ def main():
             if args.omni:
                 logger.info(f'>>>> omni is ON, cluster is {args.cluster}')
              
-            # handle built-in model exceptions; bacterial ones get no size model 
+            # handle built-in model exceptions
             if builtin_model:
                 if args.mxnet:
                     if args.pretrained_model=='cyto2':
                         logger.warning('cyto2 model not available in mxnet, using cyto model')
                         args.pretrained_model = 'cyto'
-                    if bacterial:
-                        logger.warning('bacterial models not available in mxnet, using pytorch')
+                    if args.pretrained_model in OMNI_MODELS:
+                        logger.warning('omnipose models not available in mxnet, using pytorch')
                         args.mxnet = False
                 if not bacterial:                
                     model = models.Cellpose(gpu=gpu, device=device, model_type=args.pretrained_model, 
-                                                torch=(not args.mxnet), omni=args.omni, net_avg=(not args.fast_mode and not args.no_net_avg))
+                                            torch=(not args.mxnet), omni=args.omni, 
+                                            net_avg=(not args.fast_mode and not args.no_net_avg))
                 else:
                     cpmodel_path = models.model_path(args.pretrained_model, 0, True)
                     model = models.CellposeModel(gpu=gpu, device=device, 
@@ -292,23 +295,19 @@ def main():
                     logger.info('>>>> omni set to false.')
                     args.omni = False
 
-            # For now, omni version is not compatible with 3D. WIP. 
-            if args.omni and args.do_3D:
-                logger.info('>>>> omni not yet compatible with 3D segmentation.')
-                confirm = confirm_prompt('Continue with omni set to false?')
-                if not confirm:
-                    exit()
-                else:
-                    logger.info('>>>> omni set to false.')
-                    args.omni = False
+            # # For now, omni version is not compatible with 3D. WIP. <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+            # if args.omni and args.do_3D:
+            #     logger.info('>>>> omni not yet compatible with 3D segmentation.')
+            #     confirm = confirm_prompt('Continue with omni set to false?')
+            #     if not confirm:
+            #         exit()
+            #     else:
+            #         logger.info('>>>> omni set to false.')
+            #         args.omni = False
 
-            # omni model needs 4 classes. Would prefer a more elegant way to automaticaly update the flow fields
-            # instead of users deleting them manually - a check on the number of channels, maybe, or just use
-            # the yes/no prompt to ask the user if they want their flow fields in the given directory to be deleted. 
-            # would also need the look_one_level_down optionally toggled...
+            # omni model needs 4 classes, but all the training regenerates this from scratch and just ignores saved CP flows. 
             if args.omni and args.train:
                 logger.info('>>>> Training omni model. Setting nclasses=4, RAdam=True')
-                logger.info('>>>> Make sure your flow fields are deleted and re-computed if coming from Cellpose.')
                 args.nclasses = 4
                 # args.dropout = True
                 args.RAdam = True
@@ -439,6 +438,7 @@ def main():
                                         nchan=nchan)
             else:
                 model = models.CellposeModel(device=device,
+                                             gpu=gpu, # why was this not being passed in befrore?
                                              torch=(not args.mxnet),
                                              pretrained_model=cpmodel_path,
                                              diam_mean=szmean,
@@ -452,6 +452,9 @@ def main():
                                              checkpoint=args.checkpoint,
                                              dropout=args.dropout,
                                              kernel_size=args.kernel_size) 
+            
+            # allow multiple GPUs, maybe wrap in test to see if there are multiple GPUs
+            # model = nn.DataParallel(model)
             
             # train segmentation model
             if args.train:

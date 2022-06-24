@@ -149,7 +149,7 @@ def get_label_files(image_names, mask_filter, imf=None):
     else:
         flow_names = [label_names[n] + '_flows.tif' for n in range(nimg)]
     if not all([os.path.exists(flow) for flow in flow_names]):
-        io_logger.info('not all flows are present, running flow generation for all images') #not sure if that's accurate...
+        io_logger.info('Some or all saved flows are missing. Omnipose does not need them. Cellpose does.') 
         flow_names = None
     
     # check for masks
@@ -306,7 +306,7 @@ def save_to_png(images, masks, flows, file_names):
 
 # Now saves flows, masks, etc. to separate folders.
 def save_masks(images, masks, flows, file_names, png=True, tif=False,
-               suffix='',save_flows=False, save_outlines=False, outline_col=None,
+               suffix='',save_flows=False, save_outlines=False, outline_col=[1,0,0],
                save_ncolor=False, dir_above=False, in_folders=False, savedir=None, 
                save_txt=True, omni=True):
     """ save masks + nicely plotted segmentation image to png and/or tiff
@@ -346,12 +346,12 @@ def save_masks(images, masks, flows, file_names, png=True, tif=False,
     """
     if isinstance(masks, list):
         for image, mask, flow, file_name in zip(images, masks, flows, file_names):
+            print(file_name)
             save_masks(image, mask, flow, file_name, png=png, tif=tif, suffix=suffix, dir_above=dir_above,
                        save_flows=save_flows,save_outlines=save_outlines, outline_col=outline_col,
                        save_ncolor=save_ncolor, savedir=savedir, save_txt=save_txt, 
                        in_folders=in_folders, omni=omni)
         return
-    
     
     # make sure there is a leading underscore if any suffix was supplied
     if len(suffix):
@@ -464,7 +464,7 @@ def save_masks(images, masks, flows, file_names, png=True, tif=False,
     # save RGB flow picture
     if masks.ndim < 3 and save_flows:
         check_dir(flowdir)
-        imsave(os.path.join(flowdir, basename + '_flows' + suffix + '.tif'), (flows[0]*(2**16 - 1)).astype(np.uint16))
+        imsave(os.path.join(flowdir, basename + '_flows' + suffix + '.tif'), flows[0].astype(np.uint8))
         #save full flow data
         imsave(os.path.join(flowdir, basename + '_dP' + suffix + '.tif'), flows[1]) 
     
