@@ -39,25 +39,22 @@ SERVER_UPLOAD = False # manually disable for now
 if OMNI_INSTALLED:
     import omnipose
     from omnipose.utils import normalize99 # replace the cellpose version to avoid low-cell-density artifacts
-    PRELOAD_IMAGE = '/home/kcutler/DataDrive/omnipose/test_files/e1t1_crop.tif' # change this to work on any system... maybe  built-in or download?
+    op_dir = pathlib.Path.home().joinpath('.omnipose')
+    op_dir.mkdir(exist_ok=True)
+    files = ['Sample000033.png','Sample000193.png','Sample000252.png','Sample000306.tiff','e1t1_crop.tif']
+    test_images = [pathlib.Path.home().joinpath(op_dir, f) for f in files]
+    for path,file in zip(test_images,files):
+        if not path.is_file():
+            download_url_to_file('https://github.com/kevinjohncutler/omnipose/blob/main/test_files/'+file+'?raw=true',
+                                 path, progress=True)
+    PRELOAD_IMAGE = str(test_images[-1])
     DEFAULT_MODEL = 'bact_phase_omni'
 else:
     PRELOAD_IMAGE = None # could make this once from cyto 
     DEFAULT_MODEL = 'cyto2'
 
-
-    
-# from PyQt5.QtCore import QFile, QTextStream
-# import breeze_resources
-
-# app = QApplication(sys.argv)
-# file = QFile(":/dark.qss")
-# file.open(QFile.ReadOnly | QFile.Text)
-# stream = QTextStream(file)
-# app.setStyleSheet(stream.readAll())
-
 import qdarktheme
-import qdarkstyle
+# import qdarkstyle
 import superqt
 #Define possible models; can we make a master list in another file to use in models and main? 
     
@@ -160,6 +157,8 @@ def run(image=PRELOAD_IMAGE): ###
     warnings.filterwarnings("ignore")
     app = QApplication(sys.argv)
     app.setStyleSheet(qdarktheme.load_stylesheet())
+    # app.setStyleSheet(qdarkstyle.load_stylesheet())
+    
     screen = app.primaryScreen()
     # size = screen.size()
     size = screen.availableGeometry()
@@ -168,6 +167,7 @@ def run(image=PRELOAD_IMAGE): ###
     icon_path = pathlib.Path.home().joinpath('.cellpose', 'logo.png')
     guip_path = pathlib.Path.home().joinpath('.cellpose', 'cellpose_gui.png')
     
+    
     if not icon_path.is_file(): ### this is where to add default images, too 
         cp_dir = pathlib.Path.home().joinpath('.cellpose')
         cp_dir.mkdir(exist_ok=True)
@@ -175,6 +175,9 @@ def run(image=PRELOAD_IMAGE): ###
         download_url_to_file('https://www.cellpose.org/static/images/cellpose_transparent.png', icon_path, progress=True)
     if not guip_path.is_file():
         download_url_to_file('https://github.com/MouseLand/cellpose/raw/master/docs/_static/cellpose_gui.png', guip_path, progress=True)
+    
+
+            
     icon_path = str(icon_path.resolve())
     app_icon = QtGui.QIcon()
     app_icon.addFile(icon_path, QtCore.QSize(16, 16))
