@@ -13,7 +13,7 @@ gui_deps = [
         'pyqt5', 
         'pyqt5.sip',
         'google-cloud-storage',
-        'qdarktheme'
+        'pyqtdarktheme'
         ]
 
 docs_deps = [

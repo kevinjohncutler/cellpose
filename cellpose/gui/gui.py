@@ -35,7 +35,6 @@ except:
     
     
 SERVER_UPLOAD = False # manually disable for now 
-
 if OMNI_INSTALLED:
     import omnipose
     from omnipose.utils import normalize99 # replace the cellpose version to avoid low-cell-density artifacts
@@ -49,9 +48,22 @@ if OMNI_INSTALLED:
                                  path, progress=True)
     PRELOAD_IMAGE = str(test_images[-1])
     DEFAULT_MODEL = 'bact_phase_omni'
+    
+    #logo 
+    ICON_PATH = pathlib.Path.home().joinpath('.omnipose','logo.png')
+    ICON_URL = 'https://github.com/kevinjohncutler/omnipose/blob/main/gui/logo.png?raw=true'
 else:
     PRELOAD_IMAGE = None # could make this once from cyto 
     DEFAULT_MODEL = 'cyto2'
+    cp_dir = pathlib.Path.home().joinpath('.cellpose')
+    cp_dir.mkdir(exist_ok=True)
+    ICON_PATH = pathlib.Path.home().joinpath('.cellpose', 'logo.png')
+    ICON_URL = 'https://www.cellpose.org/static/images/cellpose_transparent.png'
+    
+if not ICON_PATH.is_file():
+    print('downloading logo from', ICON_URL,'to', ICON_PATH)
+    download_url_to_file(ICON_URL, ICON_PATH, progress=True)
+      
 
 import qdarktheme
 # import qdarkstyle
@@ -164,30 +176,31 @@ def run(image=PRELOAD_IMAGE): ###
     size = screen.availableGeometry()
     clipboard = app.clipboard()
     # app.setPalette(qdarktheme.load_palette())
-    icon_path = pathlib.Path.home().joinpath('.cellpose', 'logo.png')
-    guip_path = pathlib.Path.home().joinpath('.cellpose', 'cellpose_gui.png')
+    # ICON_PATH = pathlib.Path.home().joinpath('.cellpose', 'logo.png')
+    # guip_path = pathlib.Path.home().joinpath('.cellpose', 'cellpose_gui.png')
     
-    
-    if not icon_path.is_file(): ### this is where to add default images, too 
-        cp_dir = pathlib.Path.home().joinpath('.cellpose')
-        cp_dir.mkdir(exist_ok=True)
-        print('downloading logo')
-        download_url_to_file('https://www.cellpose.org/static/images/cellpose_transparent.png', icon_path, progress=True)
-    if not guip_path.is_file():
-        download_url_to_file('https://github.com/MouseLand/cellpose/raw/master/docs/_static/cellpose_gui.png', guip_path, progress=True)
+#     if not ICON_PATH.is_file(): ### this is where to add default images, too 
+#         cp_dir = pathlib.Path.home().joinpath('.cellpose')
+#         cp_dir.mkdir(exist_ok=True)
+#         print('downloading logo')
+#         download_url_to_file('https://www.cellpose.org/static/images/cellpose_transparent.png', ICON_PATH, progress=True)
+#     if not guip_path.is_file():
+#         download_url_to_file('https://github.com/MouseLand/cellpose/raw/master/docs/_static/cellpose_gui.png', guip_path, progress=True)
     
 
             
-    icon_path = str(icon_path.resolve())
-    app_icon = QtGui.QIcon()
-    app_icon.addFile(icon_path, QtCore.QSize(16, 16))
-    app_icon.addFile(icon_path, QtCore.QSize(24, 24))
-    app_icon.addFile(icon_path, QtCore.QSize(32, 32))
-    app_icon.addFile(icon_path, QtCore.QSize(48, 48))
-    app_icon.addFile(icon_path, QtCore.QSize(64, 64))
-    app_icon.addFile(icon_path, QtCore.QSize(256, 256))
-    app.setWindowIcon(app_icon)
-    os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
+    # ICON_PATH = str(ICON_PATH.resolve())
+#     ICON_PATH = '/home/kcutler/DataDrive/omnipose/gui/logo.png'
+
+#     app_icon = QtGui.QIcon()
+#     app_icon.addFile(ICON_PATH, QtCore.QSize(16, 16))
+#     app_icon.addFile(ICON_PATH, QtCore.QSize(24, 24))
+#     app_icon.addFile(ICON_PATH, QtCore.QSize(32, 32))
+#     app_icon.addFile(ICON_PATH, QtCore.QSize(48, 48))
+#     app_icon.addFile(ICON_PATH, QtCore.QSize(64, 64))
+#     app_icon.addFile(ICON_PATH, QtCore.QSize(256, 256))
+#     app.setWindowIcon(app_icon)
+#     os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
 
     # models.download_model_weights() # does not exist
     MainW(size, clipboard, image=image)
@@ -210,14 +223,11 @@ class MainW(QMainWindow):
         self.setWindowTitle("cellpose/omnipose GUI")
         self.cp_path = os.path.dirname(os.path.realpath(__file__))
         app_icon = QtGui.QIcon()
-        icon_path = pathlib.Path.home().joinpath('.cellpose', 'logo.png')
-        icon_path = str(icon_path.resolve())
-        app_icon.addFile(icon_path, QtCore.QSize(16, 16))
-        app_icon.addFile(icon_path, QtCore.QSize(24, 24))
-        app_icon.addFile(icon_path, QtCore.QSize(32, 32))
-        app_icon.addFile(icon_path, QtCore.QSize(48, 48))
-        app_icon.addFile(icon_path, QtCore.QSize(64, 64))
-        app_icon.addFile(icon_path, QtCore.QSize(256, 256))
+        icon_path = str(ICON_PATH.resolve())
+
+        for i in [16,24,32,48,64,256]:
+            app_icon.addFile(icon_path, QtCore.QSize(i,i)) 
+
         self.setWindowIcon(app_icon)
 
         menus.mainmenu(self)
