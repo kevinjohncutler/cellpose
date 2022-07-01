@@ -207,7 +207,7 @@ def run(image=PRELOAD_IMAGE): ###
     icon_path = str(ICON_PATH.resolve())
     for i in [16,24,32,48,64,256]:
         app_icon.addFile(icon_path, QtCore.QSize(i,i)) 
-    self.setWindowIcon(app_icon)
+    app.setWindowIcon(app_icon)
     
     MainW(size, clipboard, image=image)
     ret = app.exec_()
