@@ -203,6 +203,12 @@ def run(image=PRELOAD_IMAGE): ###
 #     os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
 
     # models.download_model_weights() # does not exist
+    app_icon = QtGui.QIcon()
+    icon_path = str(ICON_PATH.resolve())
+    for i in [16,24,32,48,64,256]:
+        app_icon.addFile(icon_path, QtCore.QSize(i,i)) 
+    self.setWindowIcon(app_icon)
+    
     MainW(size, clipboard, image=image)
     ret = app.exec_()
     sys.exit(ret)
@@ -222,13 +228,8 @@ class MainW(QMainWindow):
         self.setGeometry(0, 0, min(1200,size.width()),  min(1000,size.height())) 
         self.setWindowTitle("cellpose/omnipose GUI")
         self.cp_path = os.path.dirname(os.path.realpath(__file__))
-        app_icon = QtGui.QIcon()
-        icon_path = str(ICON_PATH.resolve())
+        
 
-        for i in [16,24,32,48,64,256]:
-            app_icon.addFile(icon_path, QtCore.QSize(i,i)) 
-
-        self.setWindowIcon(app_icon)
 
         menus.mainmenu(self)
         menus.editmenu(self)
