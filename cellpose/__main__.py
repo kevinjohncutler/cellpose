@@ -180,7 +180,7 @@ def main():
     else:
         if args.verbose:
             from .io import logger_setup
-            logger, log_file = logger_setup()
+            logger, log_file = logger_setup(args.verbose)
             print('>>>> log file',log_file)
         else:
             print('>>>> !NEW LOGGING SETUP! To see cellpose progress, set --verbose')

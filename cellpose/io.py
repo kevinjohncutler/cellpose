@@ -35,7 +35,7 @@ except:
 
 io_logger = logging.getLogger(__name__)
 
-def logger_setup():
+def logger_setup(verbose=False):
     cp_dir = pathlib.Path.home().joinpath('.cellpose')
     cp_dir.mkdir(exist_ok=True)
     log_file = cp_dir.joinpath('run.log')
@@ -44,7 +44,7 @@ def logger_setup():
     except:
         print('creating new log file')
     logging.basicConfig(
-                    level=logging.INFO,
+                    level=logging.DEBUG if verbose else logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s",
                     handlers=[
                         logging.FileHandler(log_file),

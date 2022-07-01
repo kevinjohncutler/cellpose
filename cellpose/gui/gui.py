@@ -1749,7 +1749,6 @@ class MainW(QMainWindow):
                      net_avg,
                      False,
                      omni)
-        print(s)
         self.runstring.setPlainText(s)
             
         if not omni:
@@ -1833,7 +1832,7 @@ class MainW(QMainWindow):
                 omni = OMNI_INSTALLED and self.omni.isChecked()
                 # useful printout for easily copying parameters to a notebook etc. 
                 s = ('channels={}, mask_threshold={}, '
-                     'flow_threshold={}, diameter={}, invert={}, net_avg={}, '
+                     'flow_threshold={}, diameter={}, invert={}, cluster={}, net_avg={}, '
                      'do_3D={}, omni={}'
                     ).format(self.get_channels(),
                              self.cellprob,
@@ -1845,8 +1844,7 @@ class MainW(QMainWindow):
                              do_3D,
                              omni)
                 self.runstring.setPlainText(s)
-                               
-                
+
                 masks, flows = self.model.eval(data, channels=channels,
                                                mask_threshold=self.cellprob,
                                                flow_threshold=self.threshold,

@@ -4,6 +4,8 @@ This fork of Cellpose continues the generalizations first introduced by Omnipose
 
 The main generalization introduced in this fork is true 3D segmentation - that is, direct prediction of 3D flow field as opposed to merging flow components from 2D predictions. Use the `--dim` flag to specify whether or not you want to train/evaluate on 2D or 3D volumes. 
 
+As training 3D models are for more resource-intensive, the code has also been somewhat optimized for multi-GPU training. The main branch of Cellpose cannot use multiple GPUs, but this branch can. We have tested this only on AWS instances. 
+
 The GUI has also been greatly improved with bugfixes and additional features. The most important new feature is the ability to easily copy the parameters for replicating the GUI results in a Jupyter Notebook. This work is ongoing.
 
 Future GUI goals:
