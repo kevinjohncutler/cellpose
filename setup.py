@@ -1,7 +1,7 @@
 import setuptools
 from setuptools import setup
 
-install_deps = ['numpy>=1.20.0', 'scipy', 'natsort',
+install_deps = ['numpy>=1.22.0', 'scipy', 'natsort',
                 'tifffile', 'tqdm', 'numba', 
                 'torch>=1.6',
                 'opencv-python-headless',

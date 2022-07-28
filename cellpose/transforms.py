@@ -919,6 +919,7 @@ def original_random_rotate_and_resize(X, Y=None, scale_range=1., xy = (224,224),
                              do_flip=True, rescale=None, unet=False):
     """ augmentation by random rotation and resizing
         X and Y are lists or arrays of length nimg, with dims channels x Ly x Lx (channels optional)
+        
         Parameters
         ----------
         X: LIST of ND-arrays, float
@@ -938,6 +939,7 @@ def original_random_rotate_and_resize(X, Y=None, scale_range=1., xy = (224,224),
         rescale: array, float (optional, default None)
             how much to resize images by before performing augmentations
         unet: bool (optional, default False)
+        
         Returns
         -------
         imgi: ND-array, float
@@ -945,7 +947,7 @@ def original_random_rotate_and_resize(X, Y=None, scale_range=1., xy = (224,224),
         lbl: ND-array, float
             transformed labels in array [nimg x nchan x xy[0] x xy[1]]
         scale: array, float
-            amount each image was resized by
+            amount by which each image was resized
     """
     scale_range = max(0, min(2, float(scale_range)))
     nimg = len(X)

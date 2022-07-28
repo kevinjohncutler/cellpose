@@ -15,9 +15,9 @@ hiddenimports += PyInstaller.utils.hooks.collect_submodules("scipy")
 hiddenimports += PyInstaller.utils.hooks.collect_submodules("scipy.ndimage")
 
 a = Analysis(['cli.py'],
-             pathex=['/Users/loaner/github/cellpose'],
+             pathex=['/home/kcutler/DataDrive/cellpose'],
              binaries=[],
-             datas=[('/opt/anaconda3/envs/cellpose/lib/python3.7/site-packages/mxnet/*', 
+             datas=[('/usr/local/anaconda3/envs/omnipose/lib/python3.9/site-packages/mxnet/*', 
                         './mxnet')],
              hiddenimports=hiddenimports,
              hookspath=[],
@@ -37,13 +37,14 @@ if sys.platform == 'darwin':
             a.binaries,
             a.zipfiles,
             a.datas,
-            name='cellpose',
+            name='cellpose_op',
             debug=False,
             strip=False,
-            upx=True,
+            #upx=True,
             runtime_tmpdir=None,
             console=True,
-            icon='cellpose/logo/cellpose.icns')
+            #icon='/home/kcutler/cellpose/logo/cellpose.ico'
+            )
 
 # Package the executable file into .app if on OS X
 if sys.platform == 'darwin':
@@ -52,4 +53,5 @@ if sys.platform == 'darwin':
                 info_plist={
                   'NSHighResolutionCapable': 'True'
                 },
-                icon='cellpose/logo/cellpose.icns')
+                #icon='/home/kcutler/cellpose/logo/cellpose.ico'
+                )

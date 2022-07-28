@@ -644,6 +644,7 @@ def get_masks(p, iscell=None, rpad=20, flows=None, threshold=0.4, use_gpu=False,
     at peaks of histogram and extends the masks from the peaks so that
     they include all pixels with more than 2 final pixels p. Discards 
     masks with flow errors greater than the threshold. 
+    
     Parameters
     ----------------
     p: float32, 3D or 4D array

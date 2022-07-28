@@ -14,9 +14,9 @@ hiddenimports += PyInstaller.utils.hooks.collect_submodules("scipy")
 hiddenimports += PyInstaller.utils.hooks.collect_submodules("scipy.ndimage")
 
 a = Analysis(['cli.py'],
-             pathex=['C:\\Users\\carse\\github\\cellpose'],
+             pathex=['C:\\Users\\Mougous Lab\\cellpose'],
              binaries=[],
-             datas=[('C:/Users/carse/anaconda3/Lib/site-packages/mxnet/*', './mxnet')],
+             datas=[('C:\\Users\\Mougous Lab\\anaconda3/Lib/site-packages/mxnet/*', './mxnet')],
              hiddenimports=hiddenimports,
              hookspath=[],
              runtime_hooks=[],

@@ -43,8 +43,6 @@ dependencies:
     - pyasn1==0.4.8
     - pyasn1-modules==0.2.8
     - pycparser==2.20
-    - pyinstaller==4.0
-    - pyinstaller-hooks-contrib==2020.7
     - pyparsing==2.4.7
     - pyqt5==5.10
     - pyqt5-sip==12.8.0
@@ -61,5 +59,5 @@ dependencies:
     - tqdm==4.48.2
     - urllib3==1.25.10
     - wheel==0.35.1
-prefix: /opt/anaconda3/envs/cp_installer
+prefix: /usr/local/anaconda3/envs/cp_installer
 

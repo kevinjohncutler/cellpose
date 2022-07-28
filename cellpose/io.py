@@ -133,41 +133,64 @@ def get_image_files(folder, mask_filter='_masks', imf=None, look_one_level_down=
         raise ValueError('ERROR: no images in --dir folder')
     
     return image_names
-        
-def get_label_files(image_names, mask_filter, imf=None):
-    nimg = len(image_names)
-    label_names0 = [os.path.splitext(image_names[n])[0] for n in range(nimg)]
 
-    if imf is not None and len(imf) > 0:
-        label_names = [label_names0[n][:-len(imf)] for n in range(nimg)]
-    else:
-        label_names = label_names0
-        
-    # check for flows
-    if os.path.exists(label_names0[0] + '_flows.tif'):
-        flow_names = [label_names0[n] + '_flows.tif' for n in range(nimg)]
-    else:
-        flow_names = [label_names[n] + '_flows.tif' for n in range(nimg)]
-    if not all([os.path.exists(flow) for flow in flow_names]):
-        io_logger.info('Some or all saved flows are missing. Omnipose does not need them. Cellpose does.') 
-        flow_names = None
+
+def getname(path,suffix=''):
+    return os.path.splitext(Path(path).name)[0].replace(suffix,'')
+
+# I modified this work better with the save_masks function. Complexity added for subfolder and directory flexibility,
+# and simplifications made because we can safely assume how output was saved. Instead of trying to check for all possible cases,
+# it should work seamlessly for Cellpose and have all the parameters it needs to work for other applications. It appears to just be a 
+# end-user function, not used within any internal code. Changing this will cause users to modify their code a bit to call this code for each
+# label type they want, masks, flows, etc., but I think that is a much more generalizable approach.  After working with this function several times and finding it insufficient, I have decided that if the user saved the output, they should know what they are (extensions) and where they are (subfolder name). 
+def get_label_files(img_names, label_filter='_cp_masks', ext='.tif', img_filter='',
+                    dir_above=False, subfolder='', parent=None):
+    """
+    Get the corresponding labels and flows for the given file images. 
     
-    # check for masks
-    if os.path.exists(label_names[0] + mask_filter + '.tif'):
-        label_names = [label_names[n] + mask_filter + '.tif' for n in range(nimg)]
-    elif os.path.exists(label_names[0] + mask_filter + '.tiff'):
-        label_names = [label_names[n] + mask_filter + '.tiff' for n in range(nimg)]
-    elif os.path.exists(label_names[0] + mask_filter + '.png'):
-        label_names = [label_names[n] + mask_filter + '.png' for n in range(nimg)]
-    # todo, allow _seg.npy
-    #elif os.path.exists(label_names[0] + '_seg.npy'):
-    #    io_logger.info('labels found as _seg.npy files, converting to tif')
-    else:
-        raise ValueError('labels not provided with correct --mask_filter')
-    if not all([os.path.exists(label) for label in label_names]):
-        raise ValueError('labels not provided for all images in train and/or test set')
+    Parameters
+    ----------
+    img_names: list, str
+        list of full image file paths
+    label_filter: str
+        the label filter sufix, defaults to _cp_masks
+        can be _flows, _ncolor, etc. 
+    ext: str
+        the mask image extension
+        can be .tif, .png, .txt, etc. 
+    img_filter: str
+        the image filter suffix, e.g. _img
+    dir_above: bool
+        whether or not masks are stored in the image parent folder    
+    subfolder: str
+        the name of the subfolder where the labels are stored
+    parent: str
+        parent folder or list of folders where masks are stored, if different from images 
+     
+    Returns
+    -------
+    list of all absolute label paths (str)
+    
+    """
 
-    return label_names, flow_names
+    nimg = len(img_names)
+    label_base = [getname(i,suffix=img_filter) for i in img_names]
+
+    
+    # allow for the user to specify where the labels are stored, either as a single directory
+    # or as a list of directories matching the length of the image list
+    if parent is None:
+        if dir_above: # for when masks are stored in the directory above (usually in subfolder)
+            parent = [Path(i).parent.parent.absolute() for i in img_names]
+        else: # for when masks are stored in the same containing forlder as images (usually not in subfolder)
+            parent = [Path(i).parent.absolute() for i in img_names]
+    
+    elif not isinstance(label_folder, list):
+        parent = [parent]*nimg
+        
+    label_paths = [os.path.join(p,subfolder,b+label_filter+ext) for p,b in zip(parent,label_base)]    
+    
+    return label_paths
 
 # edited to allow omni to not read in training flows if any exist; flows computed on-the-fly and code expects this 
 def load_train_test_data(train_dir, test_dir=None, image_filter=None, mask_filter='_masks', unet=False, look_one_level_down=True, omni=False):
