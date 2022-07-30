@@ -44,7 +44,8 @@ def check_omni(logger,omni=False):
         return confirm
     
 # settings re-grouped a bit
-def main():
+# added omni as a parameter
+def main(omni_CLI=False):
     parser = argparse.ArgumentParser(description='cellpose parameters')
     
     # settings for CPU vs GPU
@@ -104,8 +105,8 @@ def main():
     
     # output settings
     output_args = parser.add_argument_group("output arguments")
-    output_args.add_argument('--save_png', action='store_true', help='save masks as png and outlines as text file for ImageJ')
-    output_args.add_argument('--save_tif', action='store_true', help='save masks as tif and outlines as text file for ImageJ')
+    output_args.add_argument('--save_png', action='store_true', help='save masks as png')
+    output_args.add_argument('--save_tif', action='store_true', help='save masks as tif')
     output_args.add_argument('--no_npy', action='store_true', help='suppress saving of npy')
     output_args.add_argument('--savedir',
                         default=None, type=str, help='folder to which segmentation results will be saved (defaults to input image directory)')
@@ -115,6 +116,8 @@ def main():
     output_args.add_argument('--save_outlines', action='store_true', help='whether or not to save RGB outline images when masks are saved (disabled by default)')
     output_args.add_argument('--save_ncolor', action='store_true', help='whether or not to save minimal "n-color" masks (disabled by default')
     output_args.add_argument('--save_txt', action='store_true', help='flag to enable txt outlines for ImageJ (disabled by default)')
+    output_args.add_argument('--transparency', action='store_true', help='store flows with background transparent (alpha=flow magnitude) (disabled by default)')
+    
 
     # training settings
     training_args = parser.add_argument_group("training arguments")
@@ -215,8 +218,8 @@ def main():
         nuclear = 'nuclei' in args.pretrained_model
         bacterial = 'bact' in args.pretrained_model
         
-        # force omni on for those models, but don't toggle it off if manually specified 
-        if 'omni' in args.pretrained_model:
+        # force omni on for those models, but don't toggle it off if manually specified via --omni or by invoking python -m omnipose
+        if 'omni' in args.pretrained_model or omni_CLI:
             args.omni = True
         
         if args.cluster and 'sklearn' not in sys.modules:
@@ -345,6 +348,7 @@ def main():
                                 omni=args.omni,
                                 anisotropy=args.anisotropy,
                                 verbose=args.verbose,
+                                transparency=args.transparency, # RGB flows made in the eval step
                                 model_loaded=True)
                 masks, flows = out[:2]
                 if len(out) > 3:

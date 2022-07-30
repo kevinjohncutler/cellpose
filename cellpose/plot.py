@@ -249,32 +249,30 @@ def mask_overlay(img, masks, colors=None, omni=False):
 
 def image_to_rgb(img0, channels=None, channel_axis=-1, omni=False):
     """ image is 2 x Ly x Lx or Ly x Lx x 2 - change to RGB Ly x Lx x 3 """
-    if channels is None:
-        if img0.ndim==2:
-            channels = [0,0]
-        else:
-            channels = [i+1 for i in range(img0.shape[channel_axis])] # 1,2,3 for axes 0,1,2
-    
-    # if not np.any(img0[1]):
-    #     # img0 = img0[0]
-    # channels=[0,0]
-    # img = transforms.move_axis(img0, m_axis=channel_axis, first=False) # move channel last 
-    # if not np.any(img[...,1]):
-    #     img0 = img0[0]
-    #     channels=[0,0]
+
     
     img = img0.copy()
     img = img.astype(np.float32)
-    if img.ndim<3:
-        img = img[:,:,np.newaxis]
+    if img.ndim<3: # if monochannel 
+        img = img[...,np.newaxis]
+        channels = [0,0]
     if img.shape[0]<5: # putting channel axis last 
         img = np.transpose(img, (1,2,0))
+        
+    # if channels is still none, ndim>2
+    if channels is None:
+        if np.all(img0[...,0]==img0[...,1]):
+            channels = [0,0] # if R=G, assume grayscale image 
+        else:
+            channels = [i+1 for i in range(img0.shape[channel_axis])] # 1,2,3 for axes 0,1,2
+        
     if channels[0]==0:
         img = img.mean(axis=-1)[:,:,np.newaxis]
     for i in range(img.shape[-1]):
         if np.ptp(img[:,:,i])>0:
             img[:,:,i] = transforms.normalize99(img[:,:,i],omni=omni)
-            img[:,:,i] = np.clip(img[:,:,i], 0, 1)
+            img[:,:,i] = np.clip(img[:,:,i], 0, 1) #irrelevant for omni
+    
     img *= 255
     img = np.uint8(img)
     RGB = np.zeros((img.shape[0], img.shape[1], 3), np.uint8)
@@ -309,7 +307,7 @@ def disk(med, r, Ly, Lx):
     x = xx[inds].flatten()
     return y,x
 
-def outline_view(img0,maski,color=[1,0,0], channels=None, channel_axis=-1, mode='inner'):
+def outline_view(img0, maski, color=[1,0,0], channels=None, channel_axis=-1, mode='inner'):
     """
     Generates a red outline overlay onto image.
     """
@@ -317,7 +315,7 @@ def outline_view(img0,maski,color=[1,0,0], channels=None, channel_axis=-1, mode=
     if np.max(color)<=1:
         color = np.array(color)*(2**8-1)
 
-    img0 = image_to_rgb(img0,channels=channels,channel_axis=channel_axis,omni=True) 
+    img0 = image_to_rgb(img0, channels=channels, channel_axis=channel_axis, omni=True) 
     if SKIMAGE_ENABLED:
         outlines = find_boundaries(maski,mode=mode) #not using masks_to_outlines as that gives border 'outlines'
     else:
