@@ -1053,9 +1053,13 @@ class DerivativeLoss(torch.nn.Module):
         super().__init__()
 
     def forward(self,y,Y,w,mask):
-        axes = [k for k in range(len(y[0]))]        
+        # y is awlays nbatch x dim x shape, shape is Ly x Lx, Lt x Ly x Lx, or Lz x Ly x Lx. 
+        # so y[0] grabs one example
+        # axes = [k for k in range(len(y[0]))]     
+        # print('shape',y.shape,y[0].shape)
         dim = y.shape[1]
-        dims = axes[-dim:]
+        dims = [k for k in range(-dim,0)]
+        # print('dims',dim,dims)
         dy = torch.stack(torch.gradient(y,dim=dims))
         dY = torch.stack(torch.gradient(Y,dim=dims))
         return torch.mean(torch.sum(torch.square((dy-dY)/5.),axis=0)[mask]*w[mask])    
@@ -1114,9 +1118,13 @@ class DivergenceLoss(torch.nn.Module):
 def divergence(y):
     axes = [k for k in range(len(y[0]))] #note that this only works when there are at least two images in batch 
     dim = y.shape[1]
-    dims = axes[-dim:]
-    return torch.stack([torch.gradient(y[:,-k],dim=k)[0] for k in dims]).sum(dim=0)
+    # print('divy',y.shape,y[:,0].shape)
+
+    # return torch.stack([torch.gradient(y[:,-k],dim=k)[0] for k in dims]).sum(dim=0)
+    return torch.stack([torch.gradient(y[:,ax],dim=ax-dim)[0] for ax in axes]).sum(dim=0)
     
+    # k should be 0,1 and dim should be -2,-1
+    # so ax-dim, in 3D axes = 0,1,2 and ax-dim is 0-3 = -3, 1-3 = -2, 2-3 = -1
 
 # averaging the mean across each 
 def mean_of_means(x):

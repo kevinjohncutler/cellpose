@@ -40,7 +40,7 @@ def check_omni(logger,omni=False):
         if confirm:
             install('omnipose')
         else:
-            logger.info('>>>> Omnipose not installed. Running with omni=False')
+            logger.info('Omnipose not installed. Running with omni=False')
         return confirm
     
 # settings re-grouped a bit
@@ -134,7 +134,7 @@ def main(omni_CLI=False):
     training_args.add_argument('--batch_size',
                         default=8, type=int, help='batch size. Default: %(default)s')
     training_args.add_argument('--min_train_masks',
-                        default=5, type=int, help='minimum number of masks a training image must have to be used. Default: %(default)s')
+                        default=1, type=int, help='minimum number of masks a training image must have to be used. Default: %(default)s')
     training_args.add_argument('--residual_on',
                         default=1, type=int, help='use residual connections')
     training_args.add_argument('--style_on',
@@ -184,9 +184,9 @@ def main(omni_CLI=False):
         if args.verbose:
             from .io import logger_setup
             logger, log_file = logger_setup(args.verbose)
-            print('>>>> log file',log_file)
+            print('log file',log_file)
         else:
-            print('>>>> !NEW LOGGING SETUP! To see cellpose progress, set --verbose')
+            print('!NEW LOGGING SETUP! To see cellpose progress, set --verbose')
             print('No --verbose => no progress or info printed')
             logger = logging.getLogger(__name__)
 
@@ -195,16 +195,16 @@ def main(omni_CLI=False):
 
         # find images
         if len(args.img_filter)>0:
-            imf = args.img_filter
+            img_filter = args.img_filter
         else:
-            imf = None
+            img_filter = ''
 
 
         # Check with user if they REALLY mean to run without saving anything 
         if not (args.train or args.train_size):
             saving_something = args.save_png or args.save_tif or args.save_flows or args.save_ncolor or args.save_txt
             if not (saving_something or args.testing): 
-                print('>>>> Running without saving any output.')
+                print('Running without saving any output.')
                 confirm = confirm_prompt('Proceed Anyway?')
                 if not confirm:
                     exit()
@@ -212,7 +212,6 @@ def main(omni_CLI=False):
         device, gpu = models.assign_device((not args.mxnet), args.use_gpu)
         
         #define available model names, right now we have three broad categories 
-        print('hey',MODEL_NAMES)
         builtin_model = np.any([args.pretrained_model==s for s in MODEL_NAMES])
         cytoplasmic = 'cyto' in args.pretrained_model
         nuclear = 'nuclei' in args.pretrained_model
@@ -223,18 +222,47 @@ def main(omni_CLI=False):
             args.omni = True
         
         if args.cluster and 'sklearn' not in sys.modules:
-            print('>>>> DBSCAN clustering requires scikit-learn.')
+            print('DBSCAN clustering requires scikit-learn.')
             confirm = confirm_prompt('Install scikit-learn?')
             if confirm:
                 install('scikit-learn')
             else:
-                print('>>>> scikit-learn not installed. DBSCAN clustering will be automatically disabled.')
+                print('scikit-learn not installed. DBSCAN clustering will be automatically disabled.')
                           
         omni = check_omni(args.omni) # repeat the above check but factor it for use elsewhere
         if args.omni:
-            print('>>>> Omnipose enabled. See Omnipose repo for licencing details.')
+            print('Omnipose enabled. See Omnipose repo for licencing details.')
         
-        
+
+        # omni changes not implemented for mxnet. Full parity for cpu/gpu in pytorch. 
+        if args.omni and args.mxnet:
+            logger.info('omni only implemented in pytorch.')
+            confirm = confirm_prompt('Continue with omni set to false?')
+            if not confirm:
+                exit()
+            else:
+                logger.info('omni set to false.')
+                args.omni = False
+
+        # # For now, omni version is not compatible with 3D. WIP. <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+        # if args.omni and args.do_3D:
+        #     logger.info('omni not yet compatible with 3D segmentation.')
+        #     confirm = confirm_prompt('Continue with omni set to false?')
+        #     if not confirm:
+        #         exit()
+        #     else:
+        #         logger.info('omni set to false.')
+        #         args.omni = False
+
+        # omni model needs 4 classes, but all the training regenerates this from scratch and just ignores saved CP flows. 
+        if args.omni and args.train:
+            logger.info('Training omni model. Setting nclasses=4, RAdam=True')
+            args.nclasses = 4
+            # args.dropout = True
+            args.RAdam = True
+
+
+        # EVALUATION BRANCH
         if not args.train and not args.train_size:
             tic = time.time()
             if not builtin_model:
@@ -243,20 +271,20 @@ def main(omni_CLI=False):
                     logger.warning('model path does not exist, using cyto model')
                     args.pretrained_model = 'cyto'
                 else:
-                    logger.info(f'>>> running model {cpmodel_path}')
+                    logger.info(f'running model {cpmodel_path}')
 
             image_names = io.get_image_files(args.dir, 
                                              args.mask_filter, 
-                                             imf=imf,
+                                             img_filter=img_filter,
                                              look_one_level_down=args.look_one_level_down)
             nimg = len(image_names)
                 
             cstr0 = ['GRAY', 'RED', 'GREEN', 'BLUE']
             cstr1 = ['NONE', 'RED', 'GREEN', 'BLUE']
-            logger.info('>>>> running cellpose on %d images using chan_to_seg %s and chan (opt) %s'%
+            logger.info('running cellpose on %d images using chan_to_seg %s and chan (opt) %s'%
                             (nimg, cstr0[channels[0]], cstr1[channels[1]]))
             if args.omni:
-                logger.info(f'>>>> omni is ON, cluster is {args.cluster}')
+                logger.info(f'omni is ON, cluster is {args.cluster}')
              
             # handle built-in model exceptions
             if builtin_model:
@@ -288,44 +316,18 @@ def main(omni_CLI=False):
                                              net_avg=False)
             
 
-            # omni changes not implemented for mxnet. Full parity for cpu/gpu in pytorch. 
-            if args.omni and args.mxnet:
-                logger.info('>>>> omni only implemented in pytorch.')
-                confirm = confirm_prompt('Continue with omni set to false?')
-                if not confirm:
-                    exit()
-                else:
-                    logger.info('>>>> omni set to false.')
-                    args.omni = False
-
-            # # For now, omni version is not compatible with 3D. WIP. <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-            # if args.omni and args.do_3D:
-            #     logger.info('>>>> omni not yet compatible with 3D segmentation.')
-            #     confirm = confirm_prompt('Continue with omni set to false?')
-            #     if not confirm:
-            #         exit()
-            #     else:
-            #         logger.info('>>>> omni set to false.')
-            #         args.omni = False
-
-            # omni model needs 4 classes, but all the training regenerates this from scratch and just ignores saved CP flows. 
-            if args.omni and args.train:
-                logger.info('>>>> Training omni model. Setting nclasses=4, RAdam=True')
-                args.nclasses = 4
-                # args.dropout = True
-                args.RAdam = True
-            
             # handle diameters
             if args.diameter==0:
                 if builtin_model:
                     diameter = None
-                    logger.info('>>>> estimating diameter for each image')
+                    logger.info('estimating diameter for each image')
                 else:
-                    logger.info('>>>> using user-specified model, no auto-diameter estimation available')
+                    logger.info('using user-specified model, no auto-diameter estimation available')
                     diameter = model.diam_mean
             else:
                 diameter = args.diameter
-                logger.info('>>>> using diameter %0.2f for all images'%diameter)
+                logger.info('using diameter %0.2f for all images'%diameter)
+
             
             
             tqdm_out = utils.TqdmToLogger(logger,level=logging.INFO)
@@ -364,7 +366,9 @@ def main(omni_CLI=False):
                                   save_flows=args.save_flows,save_outlines=args.save_outlines,
                                   save_ncolor=args.save_ncolor,dir_above=args.dir_above,savedir=args.savedir,
                                   save_txt=args.save_txt,in_folders=args.in_folders)
-            logger.info('>>>> completed in %0.3f sec'%(time.time()-tic))
+            logger.info('completed in %0.3f sec'%(time.time()-tic))
+            
+        # TRAINING BRANCH    
         else:
             if builtin_model:
                 if args.mxnet and args.pretrained_model=='cyto2':
@@ -383,7 +387,7 @@ def main(omni_CLI=False):
                 szmean = args.diameter # respect user defined, defaults to 30
                 
             test_dir = None if len(args.test_dir)==0 else args.test_dir
-            output = io.load_train_test_data(args.dir, test_dir, imf, args.mask_filter, args.unet, args.look_one_level_down, args.omni)
+            output = io.load_train_test_data(args.dir, test_dir, img_filter, args.mask_filter, args.unet, args.look_one_level_down, args.omni)
             images, labels, image_names, test_images, test_labels, image_names_test = output
 
             # training with all channels
@@ -398,7 +402,7 @@ def main(omni_CLI=False):
                     else:
                         nchan = min(shape) # This assumes that the channel axis is the smallest 
                         args.channel_axis = np.where([s==nchan for s in shape])
-                        logger.info('>>>> channel axis detected at position %s, manually specify if incorrect'%args.channel_axis)
+                        logger.info('channel axis detected at position %s, manually specify if incorrect'%args.channel_axis)
                 else: 
                     nchan = 1
                 channels = None 
@@ -413,22 +417,22 @@ def main(omni_CLI=False):
                     logger.critical(error_message)
                     raise ValueError(error_message)
                 cpmodel_path = False
-                logger.info('>>>> training from scratch')
+                logger.info('training from scratch')
                 if args.diameter==0:
                     rescale = False 
-                    logger.info('>>>> median diameter set to 0 => no rescaling during training')
+                    logger.info('median diameter set to 0 => no rescaling during training')
                 else:
                     rescale = True
                     szmean = args.diameter 
             else:
                 rescale = True
                 args.diameter = szmean 
-                logger.info('>>>> pretrained model %s is being used'%cpmodel_path)
+                logger.info('pretrained model %s is being used'%cpmodel_path)
                 args.residual_on = 1
                 args.style_on = 1
                 args.concatenation = 0
             if rescale and args.train:
-                logger.info('>>>> during training rescaling images to fixed diameter of %0.1f pixels'%args.diameter)
+                logger.info('during training rescaling images to fixed diameter of %0.1f pixels'%args.diameter)
                 
             # initialize model
             if args.unet:
@@ -473,7 +477,7 @@ def main(omni_CLI=False):
                                            SGD=(not args.RAdam),
                                            tyx=args.tyx)
                 model.pretrained_model = cpmodel_path
-                logger.info('>>>> model trained and saved to %s'%cpmodel_path)
+                logger.info('model trained and saved to %s'%cpmodel_path)
 
             # train size model
             if args.train_size:

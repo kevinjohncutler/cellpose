@@ -98,13 +98,13 @@ def imsave(filename, arr):
 #         skimage.io.imsave(filename, arr.astype()) #cv2 doesn't handle transparency
 
 # now allows for any extension(s) to be specified, allowing exlcusion if necessary, non-image files, etc. 
-def get_image_files(folder, mask_filter='_masks', imf=None, look_one_level_down=False,
+def get_image_files(folder, mask_filter='_masks', img_filter=None, look_one_level_down=False,
                     extensions = ['png','jpg','jpeg','tif','tiff']):
     """ find all images in a folder and if look_one_level_down all subfolders """
     mask_filters = ['_cp_masks', '_cp_output', '_flows', mask_filter]
     image_names = []
-    if imf is None:
-        imf = ''
+    if img_filter is None:
+        img_filter = ''
     
     folders = []
     if look_one_level_down:
@@ -115,7 +115,7 @@ def get_image_files(folder, mask_filter='_masks', imf=None, look_one_level_down=
     
     for folder in folders:
         for ext in extensions:
-            image_names.extend(glob.glob(folder + ('/*%s.'+ext)%imf))
+            image_names.extend(glob.glob(folder + ('/*%s.'+ext)%img_filter))
     
     image_names = natsorted(image_names)
     imn = []
@@ -123,8 +123,8 @@ def get_image_files(folder, mask_filter='_masks', imf=None, look_one_level_down=
         imfile = os.path.splitext(im)[0]
         igood = all([(len(imfile) > len(mask_filter) and imfile[-len(mask_filter):] != mask_filter) or len(imfile) < len(mask_filter) 
                         for mask_filter in mask_filters])
-        if len(imf)>0:
-            igood &= imfile[-len(imf):]==imf
+        if len(img_filter)>0:
+            igood &= imfile[-len(img_filter):]==img_filter
         if igood:
             imn.append(im)
     image_names = imn
@@ -139,14 +139,14 @@ def getname(path,suffix=''):
     return os.path.splitext(Path(path).name)[0].replace(suffix,'')
 
 # I modified this work better with the save_masks function. Complexity added for subfolder and directory flexibility,
-# and simplifications made because we can safely assume how output was saved. Instead of trying to check for all possible cases,
-# it should work seamlessly for Cellpose and have all the parameters it needs to work for other applications. It appears to just be a 
-# end-user function, not used within any internal code. Changing this will cause users to modify their code a bit to call this code for each
-# label type they want, masks, flows, etc., but I think that is a much more generalizable approach.  After working with this function several times and finding it insufficient, I have decided that if the user saved the output, they should know what they are (extensions) and where they are (subfolder name). 
-def get_label_files(img_names, label_filter='_cp_masks', ext='.tif', img_filter='',
-                    dir_above=False, subfolder='', parent=None):
+# and simplifications made because we can safely assume how output was saved.
+# the one place it is needed internally 
+def get_label_files(img_names, label_filter='_cp_masks', ext=None, img_filter='',
+                    dir_above=False, subfolder='', parent=None, flows=True):
     """
-    Get the corresponding labels and flows for the given file images. 
+    Get the corresponding labels and flows for the given file images. If no extension is given,
+    looks for TIF, TIFF, and PNG. If multiple are found, the first in the list is returned. 
+    If extension is given, no checks for file existence are made - useful for finding nonstandard output like txt or npy. 
     
     Parameters
     ----------
@@ -156,7 +156,7 @@ def get_label_files(img_names, label_filter='_cp_masks', ext='.tif', img_filter=
         the label filter sufix, defaults to _cp_masks
         can be _flows, _ncolor, etc. 
     ext: str
-        the mask image extension
+        the label extension
         can be .tif, .png, .txt, etc. 
     img_filter: str
         the image filter suffix, e.g. _img
@@ -175,7 +175,6 @@ def get_label_files(img_names, label_filter='_cp_masks', ext='.tif', img_filter=
 
     nimg = len(img_names)
     label_base = [getname(i,suffix=img_filter) for i in img_names]
-
     
     # allow for the user to specify where the labels are stored, either as a single directory
     # or as a list of directories matching the length of the image list
@@ -187,19 +186,60 @@ def get_label_files(img_names, label_filter='_cp_masks', ext='.tif', img_filter=
     
     elif not isinstance(label_folder, list):
         parent = [parent]*nimg
-        
-    label_paths = [os.path.join(p,subfolder,b+label_filter+ext) for p,b in zip(parent,label_base)]    
     
-    return label_paths
+    
+    if ext is None:
+        label_paths = []
+        extensions = ['.tif','.tiff','.png'] #order preference comes here 
+
+        for p,b in zip(parent,label_base):            
+            paths = [os.path.join(p,subfolder,b+label_filter+ext) for ext in extensions]
+            found = [os.path.exists(path) for path in paths]
+            nfound = np.sum(found)
+
+            if nfound == 0:
+                io_logger.warning('No TIF, TIFF, or PNG labels of type {} found for image {}.'.format(label_filter, b))
+            else:
+                idx = np.nonzero(found)[0][0]
+                label_paths.append(paths[idx])
+                if nfound > 1:
+                    io_logger.warning("""Multiple labels of type {} also 
+                          'found for image {}. Deferring to {} label.""".format(label_filter, b, extensions[idx]))
+            
+        
+    else:
+        label_paths = [os.path.join(p,subfolder,b+label_filter+ext) for p,b in zip(parent,label_base)]
+        
+    # this allows both flow name conventions to exist in one folder 
+    if flows:
+        flow_paths = []
+        imfilters = ['',img_filter] 
+
+        for p,b in zip(parent,label_base):            
+            paths = [os.path.join(p,subfolder,b+imf+'_flows.tif') for imf in imfilters]
+            found = [os.path.exists(path) for path in paths]
+            nfound = np.sum(found)
+
+            if nfound == 0:
+                io_logger.info('not all flows are present, will run flow generation for all images')
+                return label_paths, None
+            else:
+                idx = np.nonzero(found)[0][0]
+                flow_paths.append(paths[idx])
+        
+        return label_paths, flow_paths
+        
+    else:
+        return label_paths
 
 # edited to allow omni to not read in training flows if any exist; flows computed on-the-fly and code expects this 
-def load_train_test_data(train_dir, test_dir=None, image_filter=None, mask_filter='_masks', unet=False, look_one_level_down=True, omni=False):
+def load_train_test_data(train_dir, test_dir=None, image_filter='', mask_filter='_masks', unet=False, look_one_level_down=True, omni=False):
     image_names = get_image_files(train_dir, mask_filter, image_filter, look_one_level_down)
     nimg = len(image_names)
     images = [imread(image_names[n]) for n in range(nimg)]
 
     # training data
-    label_names, flow_names = get_label_files(image_names, mask_filter, imf=image_filter)
+    label_names, flow_names = get_label_files(image_names, label_filter=mask_filter, img_filter=image_filter, flows=True)
     nimg = len(image_names)
     labels = [imread(label_names[n]) for n in range(nimg)]
     if flow_names is not None and not unet and not omni:
@@ -214,7 +254,9 @@ def load_train_test_data(train_dir, test_dir=None, image_filter=None, mask_filte
     test_images, test_labels, image_names_test = None, None, None
     if test_dir is not None:
         image_names_test = get_image_files(test_dir, mask_filter, image_filter, look_one_level_down)
-        label_names_test, flow_names_test = get_label_files(image_names_test, mask_filter, imf=image_filter)
+        label_names_test, flow_names_test = get_label_files(image_names_test, label_filter=mask_filter, img_filter=image_filter, flows=True)
+        
+        
         nimg = len(image_names_test)
         test_images = [imread(image_names_test[n]) for n in range(nimg)]
         test_labels = [imread(label_names_test[n]) for n in range(nimg)]
@@ -369,7 +411,6 @@ def save_masks(images, masks, flows, file_names, png=True, tif=False,
     """
     if isinstance(masks, list):
         for image, mask, flow, file_name in zip(images, masks, flows, file_names):
-            print(file_name)
             save_masks(image, mask, flow, file_name, png=png, tif=tif, suffix=suffix, dir_above=dir_above,
                        save_flows=save_flows,save_outlines=save_outlines, outline_col=outline_col,
                        save_ncolor=save_ncolor, savedir=savedir, save_txt=save_txt, 
