@@ -142,7 +142,7 @@ def getname(path,suffix=''):
 # and simplifications made because we can safely assume how output was saved.
 # the one place it is needed internally 
 def get_label_files(img_names, label_filter='_cp_masks', ext=None, img_filter='',
-                    dir_above=False, subfolder='', parent=None, flows=True):
+                    dir_above=False, subfolder='', parent=None, flows=False):
     """
     Get the corresponding labels and flows for the given file images. If no extension is given,
     looks for TIF, TIFF, and PNG. If multiple are found, the first in the list is returned. 

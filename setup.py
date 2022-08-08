@@ -10,8 +10,8 @@ install_deps = ['numpy>=1.22.0', 'scipy', 'natsort',
 
 gui_deps = [
         'pyqtgraph>=0.12.4', 
-        'pyqt5', 
-        'pyqt5.sip',
+        # 'pyqt5', 
+        # 'pyqt5.sip',
         'google-cloud-storage',
         'pyqtdarktheme',
         'superqt'

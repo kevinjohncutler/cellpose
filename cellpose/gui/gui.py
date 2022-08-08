@@ -6,7 +6,6 @@ from tqdm import tqdm
 from PyQt5 import QtGui, QtCore, Qt, QtWidgets
 from PyQt5.QtWidgets import QMainWindow, QApplication, QWidget, QScrollBar, QSlider, QComboBox, QGridLayout, QPushButton, QFrame, QCheckBox, QLabel, QProgressBar, QLineEdit, QMessageBox, QDoubleSpinBox, QPlainTextEdit
 import pyqtgraph as pg
-from pyqtgraph import GraphicsScene
 
 import numpy as np
 import cv2
