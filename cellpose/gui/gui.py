@@ -533,6 +533,8 @@ class MainW(QMainWindow):
         self.SizeModel.setChecked(False)
         self.SizeModel.setToolTip('sets whether or not to use a SizeModel for rescaling \nprior to running network')
         self.l0.addWidget(self.SizeModel, b,0,1,1)
+        
+
 
         # use GPU
         b+=1
@@ -625,6 +627,15 @@ class MainW(QMainWindow):
         self.invert.setFont(self.medfont)
         self.l0.addWidget(self.invert, b,0,1,1)
         self.invert.toggled.connect(self.update_plot)
+        
+        # verbose
+        b+=1
+        self.verbose = QCheckBox('debugging output')
+        self.verbose.setStyleSheet(self.checkstyle)
+        self.verbose.setFont(self.medfont)
+        self.verbose.setChecked(False)
+        self.verbose.setToolTip('sets whether or not to output verbose text to terminal for debugging')
+        self.l0.addWidget(self.verbose, b,0,1,1)
 
         
         # post-hoc paramater tuning
@@ -1860,10 +1871,12 @@ class MainW(QMainWindow):
                                                flow_threshold=self.threshold,
                                                diameter=self.diameter, 
                                                invert=self.invert.isChecked(),
-                                               net_avg=net_avg, augment=False, 
+                                               net_avg=net_avg, 
+                                               augment=False, 
                                                resample=resample,
                                                do_3D=do_3D, 
-                                               progress=self.progress, 
+                                               progress=self.progress,
+                                               verbose=self.verbose.isChecked(),
                                                omni=omni)[:2]
                 
 
