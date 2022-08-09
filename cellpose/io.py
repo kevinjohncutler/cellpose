@@ -16,7 +16,7 @@ except:
 from . import utils, plot, transforms
 
 try:
-    from PyQt5 import QtGui, QtCore, Qt, QtWidgets
+    from PyQt6 import QtGui, QtCore, Qt, QtWidgets
     GUI = True
 except:
     GUI = False

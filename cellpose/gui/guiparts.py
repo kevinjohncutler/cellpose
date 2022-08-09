@@ -1,6 +1,6 @@
-from PyQt5 import QtGui, QtCore, QtWidgets
-from PyQt5.QtGui import QPainter, QPixmap
-from PyQt5.QtWidgets import QApplication, QRadioButton, QWidget, QDialog, QButtonGroup, QSlider, QStyle, QStyleOptionSlider, QGridLayout, QPushButton, QLabel, QLineEdit, QDialogButtonBox, QComboBox, QCheckBox
+from PyQt6 import QtGui, QtCore, QtWidgets
+from PyQt6.QtGui import QPainter, QPixmap
+from PyQt6.QtWidgets import QApplication, QRadioButton, QWidget, QDialog, QButtonGroup, QSlider, QStyle, QStyleOptionSlider, QGridLayout, QPushButton, QLabel, QLineEdit, QDialogButtonBox, QComboBox, QCheckBox
 import pyqtgraph as pg
 from pyqtgraph import functions as fn
 from pyqtgraph import Point

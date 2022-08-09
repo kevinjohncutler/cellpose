@@ -211,7 +211,7 @@ See the [docs](http://cellpose.readthedocs.io/en/latest/outputs.html) for info.
 cellpose relies on the following excellent packages (which are automatically installed with conda/pip if missing):
 - [mxnet_mkl](https://mxnet.apache.org/)
 - [pyqtgraph](http://pyqtgraph.org/)
-- [PyQt5](http://pyqt.sourceforge.net/Docs/PyQt5/)
+- [PyQt6](http://pyqt.sourceforge.net/Docs/PyQt6/)
 - [numpy](http://www.numpy.org/) (>=1.16.0)
 - [numba](http://numba.pydata.org/numba-doc/latest/user/5minguide.html)
 - [scipy](https://www.scipy.org/)

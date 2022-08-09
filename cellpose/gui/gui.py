@@ -3,8 +3,9 @@ import gc
 from natsort import natsorted
 from tqdm import tqdm
 
-from PyQt5 import QtGui, QtCore, Qt, QtWidgets
-from PyQt5.QtWidgets import QMainWindow, QApplication, QWidget, QScrollBar, QSlider, QComboBox, QGridLayout, QPushButton, QFrame, QCheckBox, QLabel, QProgressBar, QLineEdit, QMessageBox, QDoubleSpinBox, QPlainTextEdit
+from PyQt6.QtCore import Qt
+from PyQt6 import QtGui, QtCore, QtWidgets
+from PyQt6.QtWidgets import QMainWindow, QApplication, QWidget, QScrollBar, QSlider, QComboBox, QGridLayout, QPushButton, QFrame, QCheckBox, QLabel, QProgressBar, QLineEdit, QMessageBox, QDoubleSpinBox, QPlainTextEdit
 import pyqtgraph as pg
 
 import numpy as np
@@ -73,8 +74,9 @@ import qdarktheme
 import superqt
 #Define possible models; can we make a master list in another file to use in models and main? 
 
-QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True) #enable highdpi scaling
-QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True) #use highdpi icons
+# deprecated in pyqt6
+# QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True) #enable highdpi scaling
+# QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True) #use highdpi icons
     
 class QHLine(QFrame):
     def __init__(self):
@@ -1963,7 +1965,7 @@ class MainW(QMainWindow):
         # self.toggle_server()
 
 
-from PyQt5.QtCore import (Qt, pyqtSignal)
+from PyQt6.QtCore import (Qt, pyqtSignal)
 class DoubleSlider(QSlider):
 
     # create our our signal that we can connect to if necessary
