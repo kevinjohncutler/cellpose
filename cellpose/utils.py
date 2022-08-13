@@ -77,7 +77,6 @@ def download_url_to_file(url, dst, progress=True):
     # We deliberately save it in a temp file and move it after
     dst = os.path.expanduser(dst)
     dst_dir = os.path.dirname(dst)
-    io.check_dir(dst_dir) # try to solve the download issue 
     f = tempfile.NamedTemporaryFile(delete=False, dir=dst_dir)
     try:
         with tqdm(total=file_size, disable=not progress,
