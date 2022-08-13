@@ -141,7 +141,7 @@ def getname(path,suffix=''):
 # I modified this work better with the save_masks function. Complexity added for subfolder and directory flexibility,
 # and simplifications made because we can safely assume how output was saved.
 # the one place it is needed internally 
-def get_label_files(img_names, label_filter='_cp_masks', ext=None, img_filter='',
+def get_label_files(img_names, label_filter='_cp_masks', img_filter='', ext=None,
                     dir_above=False, subfolder='', parent=None, flows=False):
     """
     Get the corresponding labels and flows for the given file images. If no extension is given,
@@ -373,7 +373,7 @@ def save_to_png(images, masks, flows, file_names):
 def save_masks(images, masks, flows, file_names, png=True, tif=False,
                suffix='',save_flows=False, save_outlines=False, outline_col=[1,0,0],
                save_ncolor=False, dir_above=False, in_folders=False, savedir=None, 
-               save_txt=True, omni=True):
+               save_txt=True, save_plot=True, omni=True):
     """ save masks + nicely plotted segmentation image to png and/or tiff
 
     if png, masks[k] for images[k] are saved to file_names[k]+'_cp_masks.png'
@@ -413,7 +413,7 @@ def save_masks(images, masks, flows, file_names, png=True, tif=False,
         for image, mask, flow, file_name in zip(images, masks, flows, file_names):
             save_masks(image, mask, flow, file_name, png=png, tif=tif, suffix=suffix, dir_above=dir_above,
                        save_flows=save_flows,save_outlines=save_outlines, outline_col=outline_col,
-                       save_ncolor=save_ncolor, savedir=savedir, save_txt=save_txt, 
+                       save_ncolor=save_ncolor, savedir=savedir, save_txt=save_txt, save_plot=save_plot,
                        in_folders=in_folders, omni=omni)
         return
     
@@ -463,6 +463,7 @@ def save_masks(images, masks, flows, file_names, png=True, tif=False,
             png = False 
             tif = True
             io_logger.warning('found more than 65535 masks in each image, cannot save PNG, saving as TIF')
+    
     if tif:
         exts.append('.tif')
 
@@ -479,7 +480,7 @@ def save_masks(images, masks, flows, file_names, png=True, tif=False,
     
     criterion3 = not (min(images.shape) > 3 and images.ndim >=3)
     
-    if png and MATPLOTLIB and criterion3:
+    if png and MATPLOTLIB and criterion3 and save_plot:
         img = images.copy()
         if img.ndim<3:
             img = img[:,:,np.newaxis]

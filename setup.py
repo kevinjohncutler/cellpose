@@ -1,7 +1,7 @@
 import setuptools
 from setuptools import setup
 
-install_deps = ['numpy>=1.22.0', 'scipy', 'natsort',
+install_deps = ['numpy>=1.22.4', 'scipy', 'natsort',
                 'tifffile', 'tqdm', 'numba', 
                 'torch>=1.6',
                 'opencv-python-headless',
@@ -10,8 +10,8 @@ install_deps = ['numpy>=1.22.0', 'scipy', 'natsort',
 
 gui_deps = [
         'pyqtgraph>=0.12.4', 
-        # 'PyQt6', 
-        # 'PyQt6.sip',
+        'PyQt6', 
+        'PyQt6.sip',
         'google-cloud-storage',
         # 'pyqtdarktheme',
         'pyqtdarktheme@git+https://github.com/kevinjohncutler/pyqtdarktheme#egg=pyqtdarktheme',

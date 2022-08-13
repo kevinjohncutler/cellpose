@@ -15,7 +15,7 @@ from scipy.ndimage import gaussian_filter
 from . import guiparts, menus, io
 from .. import models, core, dynamics
 from ..utils import download_url_to_file, masks_to_outlines, diameters 
-from ..io import OMNI_INSTALLED, save_server, get_image_files, imsave, imread
+from ..io import OMNI_INSTALLED, save_server, get_image_files, imsave, imread, check_dir
 from ..transforms import resize_image, normalize99 #fixed import
 from ..plot import disk
 
@@ -45,7 +45,7 @@ if OMNI_INSTALLED:
     
     #test files
     op_dir = pathlib.Path.home().joinpath('.omnipose','test_files')
-    op_dir.mkdir(exist_ok=True)
+    check_dir(op_dir)
     files = ['Sample000033.png','Sample000193.png','Sample000252.png','Sample000306.tiff','e1t1_crop.tif']
     test_images = [pathlib.Path.home().joinpath(op_dir, f) for f in files]
     for path,file in zip(test_images,files):
@@ -60,7 +60,7 @@ else:
     PRELOAD_IMAGE = None # could make this once from cyto 
     DEFAULT_MODEL = 'cyto2'
     cp_dir = pathlib.Path.home().joinpath('.cellpose')
-    cp_dir.mkdir(exist_ok=True)
+    check_dir(cp_dir)
     ICON_PATH = pathlib.Path.home().joinpath('.cellpose', 'logo.png')
     ICON_URL = 'https://www.cellpose.org/static/images/cellpose_transparent.png'
     
@@ -186,6 +186,7 @@ def run(image=PRELOAD_IMAGE): ###
     screen = app.primaryScreen()
     # size = screen.size()
     size = screen.availableGeometry()
+    print('Available screen size:',size)
     clipboard = app.clipboard()
     # app.setPalette(qdarktheme.load_palette())
     # ICON_PATH = pathlib.Path.home().joinpath('.cellpose', 'logo.png')
@@ -200,19 +201,8 @@ def run(image=PRELOAD_IMAGE): ###
 #         download_url_to_file('https://github.com/MouseLand/cellpose/raw/master/docs/_static/cellpose_gui.png', guip_path, progress=True)
     
 
-            
-    # ICON_PATH = str(ICON_PATH.resolve())
-#     ICON_PATH = '/home/kcutler/DataDrive/omnipose/gui/logo.png'
 
-#     app_icon = QtGui.QIcon()
-#     app_icon.addFile(ICON_PATH, QtCore.QSize(16, 16))
-#     app_icon.addFile(ICON_PATH, QtCore.QSize(24, 24))
-#     app_icon.addFile(ICON_PATH, QtCore.QSize(32, 32))
-#     app_icon.addFile(ICON_PATH, QtCore.QSize(48, 48))
-#     app_icon.addFile(ICON_PATH, QtCore.QSize(64, 64))
-#     app_icon.addFile(ICON_PATH, QtCore.QSize(256, 256))
-#     app.setWindowIcon(app_icon)
-#     os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
+    os.environ['MXNET_CUDNN_AUTOTUNE_DEFAULT'] = '0'
 
     # models.download_model_weights() # does not exist
     app_icon = QtGui.QIcon()
@@ -237,8 +227,8 @@ class MainW(QMainWindow):
         super(MainW, self).__init__()
         pg.setConfigOptions(imageAxisOrder="row-major")
         self.clipboard = clipboard
-        self.setGeometry(0, 0, min(1200,size.width()),  min(1000,size.height())) 
-        self.setWindowTitle("cellpose/omnipose GUI")
+        self.setGeometry(0, 0, min(1200,size.width()),  min(500,size.height())) 
+        self.setWindowTitle("Omnipose GUI")
         self.cp_path = os.path.dirname(os.path.realpath(__file__))
         
 

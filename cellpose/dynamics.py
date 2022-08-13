@@ -420,11 +420,12 @@ def steps2D_interp(p, dP, niter, use_gpu=False, device=None, omni=False, calc_tr
                 
         #pass back to cpu
         if calc_trace:
-            tr =  trace[:,:,:,[1,0]].cpu().numpy().squeeze().T
+            tr =  trace[...,[1,0]].cpu().numpy().squeeze().T
         else:
             tr = None
         
         p =  pt[:,:,:,[1,0]].cpu().numpy().squeeze().T
+        
         return p, tr
     else:
         dPt = np.zeros(p.shape, np.float32)
@@ -533,7 +534,8 @@ def steps2D(p, dP, inds, niter, omni=False, calc_trace=False):
                 p[k,y,x] = min(shape[k]-1, max(0, p[k,y,x] + step[k]))
     return p, tr
 
-def follow_flows(dP, mask=None, inds=None, niter=200, interp=True, use_gpu=True, device=None, omni=False, calc_trace=False):
+def follow_flows(dP, mask=None, inds=None, niter=200, interp=True, use_gpu=True, device=None, 
+                 omni=False, calc_trace=False):
     """ define pixels and run dynamics to recover masks in 2D
     
     Pixels are meshgrid. Only pixels with non-zero cell-probability
@@ -593,7 +595,7 @@ def follow_flows(dP, mask=None, inds=None, niter=200, interp=True, use_gpu=True,
             dynamics_logger.warning('WARNING: no mask pixels found')
             return p, inds, None
         if not interp:
-            p, tr = steps2D(p, dP.astype(np.float32), inds, niter,omni=omni,calc_trace=calc_trace)
+            p, tr = steps2D(p, dP.astype(np.float32), inds, niter, omni=omni, calc_trace=calc_trace)
             #p = p[:,inds[:,0], inds[:,1]]
             #tr = tr[:,:,inds[:,0], inds[:,1]].transpose((1,2,0))
         else:
@@ -752,18 +754,19 @@ def get_masks(p, iscell=None, rpad=20, flows=None, threshold=0.4, use_gpu=False,
 def compute_masks(dP, cellprob, bd=None, p=None, inds=None, niter=200, mask_threshold=0.0, diam_threshold=12.,
                    flow_threshold=0.4, interp=True, do_3D=False, 
                    min_size=15, resize=None, verbose=False,
-                   use_gpu=False, device=None, nclasses=3):
+                   use_gpu=False, device=None, nclasses=3, calc_trace=False):
     """ compute masks using dynamics from dP, cellprob, and boundary """
     if verbose:
          dynamics_logger.info('mask_threshold is %f',mask_threshold)
     
+    tr = []
     cp_mask = cellprob > mask_threshold # analog to original iscell=(cellprob>cellprob_threshold)
 
     if np.any(cp_mask): #mask at this point is a cell cluster binary map, not labels     
         # follow flows
         if p is None:
             p , inds, tr = follow_flows(dP * cp_mask / 5., mask=cp_mask, inds=inds, niter=niter, interp=interp, 
-                                            use_gpu=use_gpu, device=device)
+                                            use_gpu=use_gpu, device=device, calc_trace=calc_trace)
             if inds.ndim < 2 or inds.shape[0] < 5:
                 dynamics_logger.info('No cell pixels found.')
                 shape = resize if resize is not None else cellprob.shape
@@ -816,5 +819,5 @@ def compute_masks(dP, cellprob, bd=None, p=None, inds=None, niter=200, mask_thre
     if mask.dtype==np.uint32:
         dynamics_logger.warning('more than 65535 masks in image, masks returned as np.uint32')
 
-    return mask, p, []
+    return mask, p, tr
 

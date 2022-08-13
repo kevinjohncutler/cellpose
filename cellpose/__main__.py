@@ -217,7 +217,7 @@ def main(omni_CLI=False):
         nuclear = 'nuclei' in args.pretrained_model
         #inelegant but necessary workaround for models that I provide without multiple models
         # long term should just check to see if they exist locally or on the server, disable model averaging if not found 
-        bacterial = 'bact' in args.pretrained_model or 'worm' in args.pretrained_model 
+        bacterial = ('bact' in args.pretrained_model) or ('worm' in args.pretrained_model) 
         
         # force omni on for those models, but don't toggle it off if manually specified via --omni or by invoking python -m omnipose
         if 'omni' in args.pretrained_model or omni_CLI:

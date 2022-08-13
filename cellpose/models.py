@@ -108,7 +108,8 @@ class Cellpose():
         
         self.diam_mean = 30. #default for any cyto model 
         nuclear = 'nuclei' in model_type
-        bacterial = 'bact' in model_type
+        bacterial = ('bact' in model_type) or ('worm' in model_type) 
+        
         if nuclear:
             self.diam_mean = 17. 
         elif bacterial:
@@ -328,6 +329,11 @@ class Cellpose():
     
         return masks, flows, styles, diams
 
+    
+# there is a bunch of repetiton in cellpose(), cellposemodel(), __main__ with nuclear, bacterial checks
+# I need to figure out a way to fcotr all that out, probably by making a function in models and calling it
+# in all three contexts. Also I should just check for model existence for the 4-model averaging instead of 
+# requiring it for models based on name. 
 class CellposeModel(UnetModel):
     """
 
@@ -398,7 +404,7 @@ class CellposeModel(UnetModel):
             models_logger.info(f'>>{pretrained_model_string}<< model set to be used')
             
             nuclear = 'nuclei' in pretrained_model_string
-            bacterial = 'bact' in pretrained_model_string
+            bacterial = ('bact' in pretrained_model_string) or ('worm' in pretrained_model_string) 
             
             if nuclear:
                 self.diam_mean = 17. 
@@ -704,7 +710,6 @@ class CellposeModel(UnetModel):
                                                           omni=omni,
                                                           calc_trace=calc_trace,
                                                           verbose=verbose)
-            
             flows = [plot.dx_to_circ(dP,transparency=transparency), dP, cellprob, p, bd, tr]
             return masks, flows, styles
 
@@ -803,7 +808,8 @@ class CellposeModel(UnetModel):
                                                           diam_threshold=diam_threshold, 
                                                           flow_threshold=flow_threshold,
                                                           interp=interp, do_3D=do_3D, min_size=min_size, verbose=verbose,
-                                                          use_gpu=self.gpu, device=self.device, nclasses=self.nclasses)
+                                                          use_gpu=self.gpu, device=self.device, nclasses=self.nclasses,
+                                                          calc_trace=calc_trace)
                 else:
                     # run omnipose compute_masks
                     masks, p, tr = omnipose.core.compute_masks(dP, cellprob, bd,
@@ -832,7 +838,8 @@ class CellposeModel(UnetModel):
                         # run cellpose compute_masks
                         outputs = dynamics.compute_masks(dP[:,i], cellprob[i], niter=niter, mask_threshold=mask_threshold,
                                                          flow_threshold=flow_threshold, interp=interp, resize=resize, verbose=verbose,
-                                                         use_gpu=self.gpu, device=self.device, nclasses=self.nclasses)
+                                                         use_gpu=self.gpu, device=self.device, nclasses=self.nclasses,
+                                                         calc_trace=calc_trace)
                     else:
                         # run omnipose compute_masks
                         
