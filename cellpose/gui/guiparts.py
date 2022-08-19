@@ -1,26 +1,64 @@
 from PyQt6 import QtGui, QtCore, QtWidgets
-from PyQt6.QtGui import QPainter, QPixmap
+from PyQt6.QtGui import QPainter, QPixmap, QNativeGestureEvent
 from PyQt6.QtWidgets import QApplication, QRadioButton, QWidget, QDialog, QButtonGroup, QSlider, QStyle, QStyleOptionSlider, QGridLayout, QPushButton, QLabel, QLineEdit, QDialogButtonBox, QComboBox, QCheckBox
 import pyqtgraph as pg
 from pyqtgraph import functions as fn
 from pyqtgraph import Point
 import numpy as np
-import pathlib
+import pathlib, os
 
 import superqt
+
+TOOLBAR_WIDTH = 7
+
+def create_channel_choose():
+    # choose channel
+    ChannelChoose = [QComboBox(), QComboBox()]
+    ChannelLabels = []
+    ChannelChoose[0].addItems(['gray','red','green','blue'])
+    ChannelChoose[1].addItems(['none','red','green','blue'])
+    cstr = ['chan to segment:', 'chan2 (optional): ']
+    for i in range(2):
+        ChannelLabels.append(QLabel(cstr[i]))
+        if i==0:
+            ChannelLabels[i].setToolTip('this is the channel in which the cytoplasm or nuclei exist that you want to segment')
+            ChannelChoose[i].setToolTip('this is the channel in which the cytoplasm or nuclei exist that you want to segment')
+        else:
+            ChannelLabels[i].setToolTip('if <em>cytoplasm</em> model is chosen, and you also have a nuclear channel, then choose the nuclear channel for this option')
+            ChannelChoose[i].setToolTip('if <em>cytoplasm</em> model is chosen, and you also have a nuclear channel, then choose the nuclear channel for this option')
+        
+    return ChannelChoose, ChannelLabels
+
+class ModelButton(QPushButton):
+    def __init__(self, parent, model_name, text):
+        super().__init__()
+        self.setEnabled(False)
+        self.setStyleSheet(parent.styleInactive)
+        self.setText(text)
+        self.setFont(parent.smallfont)
+        self.clicked.connect(lambda: self.press(parent))
+        self.model_name = model_name
+        
+    def press(self, parent):
+        for i in range(len(parent.StyleButtons)):
+            parent.StyleButtons[i].setStyleSheet(parent.styleUnpressed)
+        self.setStyleSheet(parent.stylePressed)
+        parent.compute_model(self.model_name)
 
 class TrainWindow(QDialog):
     def __init__(self, parent, model_strings):
         super().__init__(parent)
-        self.setGeometry(100,100,600,300)
+        self.setGeometry(100,100,900,350)
         self.setWindowTitle('train settings')
         self.win = QWidget(self)
         self.l0 = QGridLayout()
         self.win.setLayout(self.l0)
 
         yoff = 0
-        qlabel = QLabel('train model using images + masks available in current folder')
-        qlabel.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        qlabel = QLabel('train model w/ images + _seg.npy in current folder >>')
+        qlabel.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
+        
+        qlabel.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         self.l0.addWidget(qlabel, yoff,0,1,2)
 
         # choose initial model
@@ -29,58 +67,92 @@ class TrainWindow(QDialog):
         self.ModelChoose.addItems(model_strings)
         self.ModelChoose.addItems(['scratch']) 
         self.ModelChoose.setFixedWidth(150)
-        self.ModelChoose.setCurrentIndex(0)
+        self.ModelChoose.setCurrentIndex(parent.training_params['model_index'])
         self.l0.addWidget(self.ModelChoose, yoff, 1,1,1)
         qlabel = QLabel('initial model: ')
-        qlabel.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        qlabel.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.l0.addWidget(qlabel, yoff,0,1,1)
 
-        # choose parameters
-        labels = ['learning_rate', 'weight_decay', 'n_epochs']
-        values =  [0.1, 0.0001, 100]
+        # choose channels
+        self.ChannelChoose, self.ChannelLabels = create_channel_choose()
+        for i in range(2):
+            yoff+=1
+            self.ChannelChoose[i].setFixedWidth(150)
+            self.ChannelChoose[i].setCurrentIndex(parent.ChannelChoose[i].currentIndex())
+            self.l0.addWidget(self.ChannelLabels[i], yoff, 0,1,1)
+            self.l0.addWidget(self.ChannelChoose[i], yoff, 1,1,1)
+
+        # choose parameters        
+        labels = ['learning_rate', 'weight_decay', 'n_epochs', 'model_name']
         self.edits = []
         yoff += 1
-        for i, (label, value) in enumerate(zip(labels, values)):
+        for i, label in enumerate(labels):
             qlabel = QLabel(label)
-            qlabel.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+            qlabel.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             self.l0.addWidget(qlabel, i+yoff,0,1,1)
             self.edits.append(QLineEdit())
-            self.edits[-1].setText(str(value))
+            self.edits[-1].setText(str(parent.training_params[label]))
+            self.edits[-1].setFixedWidth(200)
             self.l0.addWidget(self.edits[-1], i+yoff, 1,1,1)
 
         yoff+=len(labels)
-        self.autorun = QCheckBox('auto-run trained model on next image in folder')
-        self.autorun.setChecked(True)
-        self.l0.addWidget(self.autorun, yoff, 0, 1, 2)
+
+        yoff+=1
+        qlabel = QLabel('(to remove files, click cancel then remove \nfrom folder and reopen train window)')
+        self.l0.addWidget(qlabel, yoff,0,2,4)
 
         # click button
-        yoff+=1
+        yoff+=2
         QBtn = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
         self.buttonBox = QDialogButtonBox(QBtn)
         self.buttonBox.accepted.connect(lambda: self.accept(parent))
         self.buttonBox.rejected.connect(self.reject)
-        self.l0.addWidget(self.buttonBox, yoff, 0, 1,3)
+        self.l0.addWidget(self.buttonBox, yoff, 0, 1,4)
+
+        
+        # list files in folder
+        qlabel = QLabel('filenames')
+        qlabel.setFont(QtGui.QFont("Arial", 8, QtGui.QFont.Bold))
+        self.l0.addWidget(qlabel, 0,4,1,1)
+        qlabel = QLabel('# of masks')
+        qlabel.setFont(QtGui.QFont("Arial", 8, QtGui.QFont.Bold))
+        self.l0.addWidget(qlabel, 0,5,1,1)
+    
+        for i in range(10):
+            if i > len(parent.train_files) - 1:
+                break
+            elif i==9 and len(parent.train_files) > 10:
+                label = '...'
+                nmasks = '...'
+            else:
+                label = os.path.split(parent.train_files[i])[-1]
+                nmasks = str(parent.train_labels[i].max())
+            qlabel = QLabel(label)
+            self.l0.addWidget(qlabel, i+1,4,1,1)
+            qlabel = QLabel(nmasks)
+            qlabel.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self.l0.addWidget(qlabel, i+1, 5,1,1)
 
     def accept(self, parent):
-        parent.autorun = self.autorun.isChecked()
-        parent.learning_rate = float(self.edits[0].text())
-        parent.weight_decay = float(self.edits[1].text())
-        parent.n_epochs = int(self.edits[2].text())
-        parent.pretrained_to_use = self.ModelChoose.currentText()
-        if parent.pretrained_to_use != 'scratch':
-            parent.ModelChoose.setCurrentIndex(self.ModelChoose.currentIndex())
+        # set channels
+        for i in range(2):
+            parent.ChannelChoose[i].setCurrentIndex(self.ChannelChoose[i].currentIndex())
+        # set training params
+        parent.training_params = {'model_index': self.ModelChoose.currentIndex(),
+                                 'learning_rate': float(self.edits[0].text()), 
+                                 'weight_decay': float(self.edits[1].text()), 
+                                 'n_epochs':  int(self.edits[2].text()),
+                                 'model_name': self.edits[3].text()
+                                 }
         self.done(1)
-    #    return
 
 def make_quadrants(parent, yp):
     """ make quadrant buttons """
     parent.quadbtns = QButtonGroup(parent)
     for b in range(9):
         btn = QuadButton(b, ''+str(b+1), parent)
-
         parent.quadbtns.addButton(btn, b)
-        parent.l0.addWidget(btn, yp + parent.quadbtns.button(b).ypos, 
-                            5+parent.quadbtns.button(b).xpos, 1, 1)
+        parent.l0.addWidget(btn, yp + parent.quadbtns.button(b).ypos, TOOLBAR_WIDTH-3+parent.quadbtns.button(b).xpos, 1, 1)
         btn.setEnabled(True)
         b += 1
     parent.quadbtns.setExclusive(True)
@@ -95,12 +167,10 @@ class QuadButton(QPushButton):
         self.setText(Text)
         self.setCheckable(True)
         self.setStyleSheet(parent.styleUnpressed)
-        # self.setFont(QtGui.QFont("Arial", 8, QtGui.QFont.Bold))
+        # self.setFont(QtGui.QFont("Arial", 10))
         self.resize(self.minimumSizeHint())
-        self.setMaximumWidth(30)
-        self.setMaximumHeight(30)
-
-
+        self.setMaximumWidth(25)
+        self.setMaximumHeight(25)
         self.xpos = bid%3
         self.ypos = int(np.floor(bid/3))
         self.clicked.connect(lambda: self.press(parent, bid))
@@ -118,102 +188,7 @@ class QuadButton(QPushButton):
         parent.p0.setYRange(self.yrange[0], self.yrange[1])
         parent.show()
 
-def QDoubleSpinBox_style():
-    return  """QDoubleSpinBox
-            {
-            border : 2px solid black;
-            background : white;
-            }
-            QDoubleSpinBox::hover
-            {
-            border : 2px solid green;
-            background : lightgreen;
-            }
-            QDoubleSpinBox::up-arrow
-            {
-            border : 1px solid black;
-            background : blue;
-            }
-            QDoubleSpinBox::down-arrow
-            {
-            border : 1px solid black;
-            background : red;
-            }"""
-
 def horizontal_slider_style():
-    QSS = """
-    
-            /* qdarktheme sets this and messes things up */
-            QSlider::groove {}
-            
-            /* These  are necessary for theme compatibility */
-            QSlider{
-                background-color: none;
-            } 
-            QSlider::add-page:vertical {
-                background: none;
-                border: none;
-            }
-            QSlider::add-page:horizontal {
-                background: none;
-                border: none;
-            }
-
-            
-            QSlider::groove:horizontal {
-            border: 1px solid #bbb;
-            background: black;
-            height: 4px;
-            border-radius: 4px;
-            }
-
-            QSlider::add-page:horizontal {
-            background: black;
-            border: 1px solid #777;
-            height: 4px;
-            border-radius: 4px;
-            }
-
-            QSlider::handle:horizontal {
-            border: 1px solid #777;
-            width: 13px;
-            border-radius: 4px;
-            height: 40px;
-            }
-
-            QSlider::handle:horizontal:hover {
-            border: 1px solid #444;
-            border-radius: 4px;
-            }
-
-            QSlider::sub-page:horizontal:disabled {
-            background: #bbb;
-            border-color: #999;
-            }
-
-            QSlider::add-page:horizontal:disabled {
-            background: #eee;
-            border-color: #999;
-            }
-
-            QSlider::handle:horizontal:disabled {
-            background: #eee;
-            border: 1px solid #aaa;
-            border-radius: 4px;
-            
-            QSlider::sub-page:horizontal {
-                background: none;
-            }
-    
-            /*styling the rangeslider bar color*/
-            QRangeSlider {
-                qproperty-barColor: #eee;
-            }
-            QLabeledRangeSlider {
-                qproperty-barColor: red;
-            }
-
-            }"""
     QSS =  """
                 /* Added for compatibility with superqt */
 
@@ -234,7 +209,7 @@ def horizontal_slider_style():
 
                 /* qdarktheme sets this and messes things up */
                 QSlider::groove {}
-                
+
                 QSlider::groove:horizontal {
                     background: black;
                     height: 4px;
@@ -314,7 +289,7 @@ class ExampleGUI(QDialog):
 class HelpWindow(QDialog):
     def __init__(self, parent=None):
         super(HelpWindow, self).__init__(parent)
-        self.setGeometry(100,100,700,800)
+        self.setGeometry(100,50,700,850)
         self.setWindowTitle('cellpose help')
         self.win = QWidget(self)
         layout = QGridLayout()
@@ -336,6 +311,8 @@ class HelpWindow(QDialog):
             <p class="has-line-data" data-line-start="17" data-line-end="18">!NOTE!: The GUI automatically saves after you draw a mask in 2D but NOT after 3D mask drawing and NOT after segmentation. Save in the file menu or with Ctrl+S. The output file is in the same folder as the loaded image with <code>_seg.npy</code> appended.</p>
             <table class="table table-striped table-bordered">
             <br><br>
+            FYI there are tooltips throughout the GUI (hover over text to see)
+            <br>
             <thead>
             <tr>
             <th>Keyboard shortcuts</th>
@@ -368,16 +345,16 @@ class HelpWindow(QDialog):
             <td>SAVE MASKS IN IMAGE to <code>_seg.npy</code> file</td>
             </tr>
             <tr>
+            <td>CTRL+T</td>
+            <td>train model using _seg.npy files in folder
+            </tr>
+            <tr>
             <td>CTRL+P</td>
             <td>load <code>_seg.npy</code> file (note: it will load automatically with image if it exists)</td>
             </tr>
             <tr>
             <td>CTRL+M</td>
             <td>load masks file (must be same size as image with 0 for NO mask, and 1,2,3… for masks)</td>
-            </tr>
-            <tr>
-            <td>CTRL+N</td>
-            <td>load numpy stack (NOT WORKING ATM)</td>
             </tr>
             <tr>
             <td>A/D or LEFT/RIGHT</td>
@@ -388,12 +365,12 @@ class HelpWindow(QDialog):
             <td>change color (RGB/gray/red/green/blue)</td>
             </tr>
             <tr>
-            <td>PAGE-UP / PAGE-DOWN</td>
-            <td>change to flows and cell prob views (if segmentation computed)</td>
+            <td>R / G / B </td>
+            <td>toggle between RGB and Red or Green or Blue</td>
             </tr>
             <tr>
-            <td>, / .</td>
-            <td>increase / decrease brush size for drawing masks</td>
+            <td>PAGE-UP / PAGE-DOWN</td>
+            <td>change to flows and cell prob views (if segmentation computed)</td>
             </tr>
             <tr>
             <td>X</td>
@@ -404,8 +381,8 @@ class HelpWindow(QDialog):
             <td>toggle outlines ON or OFF</td>
             </tr>
             <tr>
-            <td>C</td>
-            <td>cycle through labels for image type (saved to <code>_seg.npy</code>)</td>
+            <td>, / .</td>
+            <td>increase / decrease brush size for drawing masks</td>
             </tr>
             </tbody>
             </table>
@@ -421,6 +398,35 @@ class HelpWindow(QDialog):
         label.setWordWrap(True)
         layout.addWidget(label, 0, 0, 1, 1)
         self.show()
+
+
+class TrainHelpWindow(QDialog):
+    def __init__(self, parent=None):
+        super(TrainHelpWindow, self).__init__(parent)
+        self.setGeometry(100,50,700,300)
+        self.setWindowTitle('training instructions')
+        self.win = QWidget(self)
+        layout = QGridLayout()
+        self.win.setLayout(layout)
+        
+        text = ('''
+            Check out this <a href="https://youtu.be/3Y1VKcxjNy4">video</a> to learn the process.
+            <ol>
+                <li>Drag and drop an image from a folder of images with a similar style (like similar cell types).</li>
+                <li>Run the built-in models on one of the images using the "model zoo" and find the one that works best for your data. Make sure that if you have a nuclear channel you have selected it for CHAN2.</li>
+                <li>Fix the labelling by drawing new ROIs (right-click) and deleting incorrect ones (CTRL+click). The GUI autosaves any manual changes (but does not autosave after running the model, for that click CTRL+S). The segmentation is saved in a "_seg.npy" file.</li>
+                <li> Go to the "Models" menu in the File bar at the top and click "Train new model..." or use shortcut CTRL+T. </li>
+                <li> Choose the pretrained model to start the training from (the model you used in #2), and type in the model name that you want to use. The other parameters should work well in general for most data types. Then click OK. </li>
+                <li> The model will train (much faster if you have a GPU) and then auto-run on the next image in the folder. Next you can repeat #3-#5 as many times as is necessary. </li>
+                <li> The trained model is available to use in the future in the GUI in the "custom model" section and is saved in your image folder. </li>
+            </ol>
+            ''')
+        label = QLabel(text)
+        label.setFont(QtGui.QFont("Arial", 8))
+        label.setWordWrap(True)
+        layout.addWidget(label, 0, 0, 1, 1)
+        self.show()
+
 
 class TypeRadioButtons(QButtonGroup):
     def __init__(self, parent=None, row=0, col=0):
@@ -449,13 +455,13 @@ class RGBRadioButtons(QButtonGroup):
         super(RGBRadioButtons, self).__init__()
         parent.color = 0
         self.parent = parent
-        self.bstr = ["image", "gradXY", "cellprob/distance", "gradZ"]
+        self.bstr = ["image", "flow field", "distance field", "boundary logits"]
         #self.buttons = QButtonGroup()
         self.dropdown = []
         for b in range(len(self.bstr)):
             button = QRadioButton(self.bstr[b])
             button.setStyleSheet('color: white;')
-            button.setFont(QtGui.QFont("Arial", 10))
+            button.setFont(parent.medfont)
             if b==0:
                 button.setChecked(True)
             self.addButton(button, b)
@@ -468,6 +474,7 @@ class RGBRadioButtons(QButtonGroup):
         b = self.checkedId()
         self.parent.view = b
         if self.parent.loaded:
+            self.parent.update_layer()
             self.parent.update_plot()
 
 
@@ -511,7 +518,7 @@ class ViewBoxNoRightDrag(pg.ViewBox):
                 mask[1-axis] = 0.0
 
             ## Scale or translate based on mouse button
-            if ev.button() & (QtCore.Qt.LeftButton | QtCore.Qt.MidButton):
+            if ev.button() & (QtCore.Qt.LeftButton | QtCore.Qt.MiddleButton):
                 if self.state['mouseMode'] == pg.ViewBox.RectMode:
                     if ev.isFinish():  ## This is the final move in the drag; change the view scale now
                         #print "finish"
@@ -598,17 +605,13 @@ class ImageDraw(pg.ImageItem):
                                 self.parent.select_cell(idx)
                         elif self.parent.masksOn:
                             self.parent.unselect_cell()
-                    else:
-                        ev.ignore()
-                        return
-
 
     def mouseDragEvent(self, ev):
         ev.ignore()
         return
 
     def hoverEvent(self, ev):
-        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CrossCursor)
+        #QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CrossCursor)
         if self.parent.in_stroke:
             if self.parent.in_stroke:
                 # continue stroke if not at start
@@ -667,7 +670,7 @@ class ImageDraw(pg.ImageItem):
         #print(ev.pressure())
 
     def drawAt(self, pos, ev=None):
-        mask = self.greenmask
+        mask = self.strokemask
         set = self.parent.current_point_set
         stroke = self.parent.current_stroke
         pos = [int(pos.y()), int(pos.x())]
@@ -722,7 +725,7 @@ class ImageDraw(pg.ImageItem):
         offmask = np.zeros((bs,bs,1))
         opamask = 100 * kernel[:,:,np.newaxis]
         self.redmask = np.concatenate((onmask,offmask,offmask,onmask), axis=-1)
-        self.greenmask = np.concatenate((onmask,offmask,onmask,opamask), axis=-1)
+        self.strokemask = np.concatenate((onmask,offmask,onmask,opamask), axis=-1)
 
 
 class RangeSlider(QSlider):
@@ -753,20 +756,20 @@ class RangeSlider(QSlider):
         self.setStyleSheet(\
                 "QSlider::handle:horizontal {\
                 background-color: white;\
-                border: 1px solid #5c5c5c;\
-                border-radius: 0px;\
-                border-color: black;\
+                border: 1px solid white;\
+                border-radius: 2px;\
+                border-color: white;\
                 height: 8px;\
                 width: 6px;\
-                margin: -8px 2; \
+                margin: 0px 2; \
                 }")
 
 
-        # self.opt = QStyleOptionSlider()
+        #self.opt = QStyleOptionSlider()
         #self.opt.orientation=QtCore.Qt.Vertical
-        # self.initStyleOption(self.opt)
+        #self.initStyleOption(self.opt)
         # 0 for the low, 1 for the high, -1 for both
-        self.active_slider = -1
+        self.active_slider = 0
         self.parent = parent
 
     def level_change(self):
@@ -794,203 +797,6 @@ class RangeSlider(QSlider):
         # based on http://qt.gitorious.org/qt/qt/blobs/master/src/gui/widgets/qslider.cpp
         painter = QPainter(self)
         style = QApplication.style()
-        # self.setStyleSheet("")
-        
-
-        for i, value in enumerate([self._low, self._high]):
-            opt = QStyleOptionSlider()
-            self.initStyleOption(opt)
-
-            # Only draw the groove for the first slider so it doesn't get drawn
-            # on top of the existing ones every time
-            if i == 0:
-                # opt.subControls = QStyle.SC_SliderHandle#QStyle.SC_SliderGroove | QStyle.SC_SliderHandle
-                opt.subControls = QStyle.SC_SliderGroove | QStyle.SC_SliderHandle
-                
-            else:
-                opt.subControls = QStyle.SC_SliderHandle
-
-            if self.tickPosition() != self.NoTicks:
-                opt.subControls |= QStyle.SC_SliderTickmarks
-
-            if self.pressed_control:
-                opt.activeSubControls = self.pressed_control
-                opt.state |= QStyle.State_Sunken
-            else:
-                opt.activeSubControls = self.hover_control
-
-            opt.sliderPosition = value
-            opt.sliderValue = value
-            style.drawComplexControl(QStyle.CC_Slider, opt, painter, self)
-
-
-    def mousePressEvent(self, event):
-        event.accept()
-
-        style = QApplication.style()
-        button = event.button()
-        # In a normal slider control, when the user clicks on a point in the
-        # slider's total range, but not on the slider part of the control the
-        # control would jump the slider value to where the user clicked.
-        # For this control, clicks which are not direct hits will slide both
-        # slider parts
-        if button:
-            opt = QStyleOptionSlider()
-            self.initStyleOption(opt)
-
-            self.active_slider = -1
-
-            for i, value in enumerate([self._low, self._high]):
-                opt.sliderPosition = value
-                hit = style.hitTestComplexControl(style.CC_Slider, opt, event.pos(), self)
-                if hit == style.SC_SliderHandle:
-                    self.active_slider = i
-                    self.pressed_control = hit
-
-                    self.triggerAction(self.SliderMove)
-                    self.setRepeatAction(self.SliderNoAction)
-                    self.setSliderDown(True)
-
-                    break
-
-            if self.active_slider < 0:
-                self.pressed_control = QStyle.SC_SliderHandle
-                self.click_offset = self.__pixelPosToRangeValue(self.__pick(event.pos()))
-                self.triggerAction(self.SliderMove)
-                self.setRepeatAction(self.SliderNoAction)
-        else:
-            event.ignore()
-
-    def mouseMoveEvent(self, event):
-        if self.pressed_control != QStyle.SC_SliderHandle:
-            event.ignore()
-            return
-
-        event.accept()
-        new_pos = self.__pixelPosToRangeValue(self.__pick(event.pos()))
-        opt = QStyleOptionSlider()
-        self.initStyleOption(opt)
-
-        if self.active_slider < 0:
-            offset = new_pos - self.click_offset
-            self._high += offset
-            self._low += offset
-            if self._low < self.minimum():
-                diff = self.minimum() - self._low
-                self._low += diff
-                self._high += diff
-            if self._high > self.maximum():
-                diff = self.maximum() - self._high
-                self._low += diff
-                self._high += diff
-        elif self.active_slider == 0:
-            if new_pos >= self._high:
-                new_pos = self._high - 1
-            self._low = new_pos
-        else:
-            if new_pos <= self._low:
-                new_pos = self._low + 1
-            self._high = new_pos
-
-        self.click_offset = new_pos
-        self.update()
-
-    def mouseReleaseEvent(self, event):
-        self.level_change()
-
-    def __pick(self, pt):
-        if self.orientation() == QtCore.Qt.Horizontal:
-            return pt.x()
-        else:
-            return pt.y()
-
-
-    def __pixelPosToRangeValue(self, pos):
-        opt = QStyleOptionSlider()
-        self.initStyleOption(opt)
-        style = QApplication.style()
-        # style = QCommonStyle()
-        # self.setStyleSheet("")
-        
-
-        gr = style.subControlRect(style.CC_Slider, opt, style.SC_SliderGroove, self)
-        sr = style.subControlRect(style.CC_Slider, opt, style.SC_SliderHandle, self)
-
-        if self.orientation() == QtCore.Qt.Horizontal:
-            slider_length = sr.width()
-            slider_min = gr.x()
-            slider_max = gr.right() - slider_length + 1
-        else:
-            slider_length = sr.height()
-            slider_min = gr.y()
-            slider_max = gr.bottom() - slider_length + 1
-
-        return style.sliderValueFromPosition(self.minimum(), self.maximum(),
-                                             pos-slider_min, slider_max-slider_min,
-                                             opt.upsideDown)
-
-    
-class LabeledRangeSlider(superqt.QLabeledRangeSlider):
-    """ A slider for ranges.
-
-        This class provides a dual-slider for ranges, where there is a defined
-        maximum and minimum, as is a normal slider, but instead of having a
-        single slider value, there are 2 slider values.
-
-        This class emits the same signals as the QSlider base class, with the
-        exception of valueChanged
-
-        Found this slider here: https://www.mail-archive.com/pyqt@riverbankcomputing.com/msg22889.html
-        and modified it
-    """
-    def __init__(self, parent=None, *args):
-        super(LabeledRangeSlider, self).__init__(*args)
-
-        self._low = self.minimum()
-        self._high = self.maximum()
-
-        self.pressed_control = QStyle.SC_None
-        self.hover_control = QStyle.SC_None
-        self.click_offset = 0
-
-        self.setOrientation(QtCore.Qt.Horizontal)
-        self.setTickPosition(QSlider.TicksRight)
-
-
-        # self.opt = QStyleOptionSlider()
-        #self.opt.orientation=QtCore.Qt.Vertical
-        # self.initStyleOption(self.opt)
-        # 0 for the low, 1 for the high, -1 for both
-        self.active_slider = -1
-        self.parent = parent
-
-    def level_change(self):
-        if self.parent is not None:
-            if self.parent.loaded:
-                self.parent.ops_plot = {'saturation': [self._low, self._high]}
-                self.parent.saturation[self.parent.currentZ] = [self._low, self._high]
-                self.parent.update_plot()
-
-    def low(self):
-        return self._low
-
-    def setLow(self, low):
-        self._low = low
-        self.update()
-
-    def high(self):
-        return self._high
-
-    def setHigh(self, high):
-        self._high = high
-        self.update()
-
-    def paintEvent(self, event):
-        # based on http://qt.gitorious.org/qt/qt/blobs/master/src/gui/widgets/qslider.cpp
-        painter = QPainter(self)
-        style = QApplication.style()
-        # self.setStyleSheet("")
-        
 
         for i, value in enumerate([self._low, self._high]):
             opt = QStyleOptionSlider()
@@ -1000,8 +806,6 @@ class LabeledRangeSlider(superqt.QLabeledRangeSlider):
             # on top of the existing ones every time
             if i == 0:
                 opt.subControls = QStyle.SC_SliderHandle#QStyle.SC_SliderGroove | QStyle.SC_SliderHandle
-                # opt.subControls = QStyle.SC_SliderGroove | QStyle.SC_SliderHandle
-                
             else:
                 opt.subControls = QStyle.SC_SliderHandle
 
@@ -1014,8 +818,8 @@ class LabeledRangeSlider(superqt.QLabeledRangeSlider):
             else:
                 opt.activeSubControls = self.hover_control
 
-            opt.sliderPosition = value
-            opt.sliderValue = value
+            opt.sliderPosition = int(value)
+            opt.sliderValue = int(value)
             style.drawComplexControl(QStyle.CC_Slider, opt, painter, self)
 
 
@@ -1104,9 +908,6 @@ class LabeledRangeSlider(superqt.QLabeledRangeSlider):
         opt = QStyleOptionSlider()
         self.initStyleOption(opt)
         style = QApplication.style()
-        # style = QCommonStyle()
-        # self.setStyleSheet("")
-        
 
         gr = style.subControlRect(style.CC_Slider, opt, style.SC_SliderGroove, self)
         sr = style.subControlRect(style.CC_Slider, opt, style.SC_SliderHandle, self)

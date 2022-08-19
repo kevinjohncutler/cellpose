@@ -52,21 +52,12 @@ def parse_model_string(pretrained_model):
     concatenation = ostrs[2]=='on'
     return residual_on, style_on, concatenation
 
-def use_gpu(gpu_number=0, istorch=True):
+def use_gpu(gpu_number=0, use_torch=True):
     """ check if gpu works """
-    if istorch:
+    if use_torch:
         return _use_gpu_torch(gpu_number)
     else:
-        return _use_gpu_mxnet(gpu_number)
-
-def _use_gpu_mxnet(gpu_number=0):
-    try:
-        _ = mx.ndarray.array([1, 2, 3], ctx=mx.gpu(gpu_number))
-        core_logger.info('** MXNET CUDA version installed and working. **')
-        return True
-    except mx.MXNetError:
-        core_logger.info('MXNET CUDA version not installed/working.')
-        return False
+        raise ValueError('cellpose only runs with pytorch now')
 
 def _use_gpu_torch(gpu_number=0):
     try:
@@ -78,20 +69,20 @@ def _use_gpu_torch(gpu_number=0):
         core_logger.info('TORCH CUDA version not installed/working.')
         return False
 
-def assign_device(istorch, gpu):
-    if gpu and use_gpu(istorch=istorch):
-        device = torch_GPU if istorch else mx_GPU
+def assign_device(use_torch=True, gpu=False, device=0):
+    if gpu and use_gpu(use_torch=True):
+        device = torch.device(f'cuda:{device}')
         gpu=True
         core_logger.info('>>>> using GPU')
     else:
-        device = torch_CPU if istorch else mx_CPU
+        device = torch.device('cpu')
         core_logger.info('>>>> using CPU')
         gpu=False
     return device, gpu
 
-def check_mkl(istorch=True):
+def check_mkl(use_torch=True):
     #core_logger.info('Running test snippet to check if MKL-DNN working')
-    if istorch:
+    if use_torch:
         mkl_enabled = torch.backends.mkldnn.is_available()
     else:
         process = subprocess.Popen(['python', 'test_mkl.py'],
@@ -105,7 +96,7 @@ def check_mkl(istorch=True):
     if mkl_enabled:
         mkl_enabled = True
         #core_logger.info('MKL version working - CPU version is sped up.')
-    elif not istorch:
+    elif not use_torch:
         core_logger.info('WARNING: MKL version on mxnet not working/installed - CPU version will be SLOW.')
         core_logger.info('see https://mxnet.apache.org/versions/1.6/api/python/docs/tutorials/performance/backend/mkldnn/mkldnn_readme.html#4)')
     else:
