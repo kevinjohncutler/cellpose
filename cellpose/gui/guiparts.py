@@ -10,6 +10,8 @@ import pathlib, os
 import superqt
 
 TOOLBAR_WIDTH = 7
+SPACING = 3
+WIDTH_0 = 25
 
 def create_channel_choose():
     # choose channel
@@ -169,8 +171,8 @@ class QuadButton(QPushButton):
         self.setStyleSheet(parent.styleUnpressed)
         # self.setFont(QtGui.QFont("Arial", 10))
         self.resize(self.minimumSizeHint())
-        self.setMaximumWidth(25)
-        self.setMaximumHeight(25)
+        self.setMaximumWidth(WIDTH_0)
+        self.setMaximumHeight(WIDTH_0)
         self.xpos = bid%3
         self.ypos = int(np.floor(bid/3))
         self.clicked.connect(lambda: self.press(parent, bid))
@@ -466,7 +468,7 @@ class RGBRadioButtons(QButtonGroup):
                 button.setChecked(True)
             self.addButton(button, b)
             button.toggled.connect(lambda: self.btnpress(parent))
-            self.parent.l0.addWidget(button, row+b,col,1,1)
+            self.parent.l0.addWidget(button, row+b,col,1,2)
         self.setExclusive(True)
         #self.buttons.
 

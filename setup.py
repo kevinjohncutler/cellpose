@@ -4,7 +4,7 @@ from setuptools import setup
 install_deps = ['numpy>=1.22.4', 'scipy', 'natsort',
                 'tifffile', 'tqdm', 'numba', 
                 'torch>=1.6',
-                'opencv-python-headless',
+                'opencv-python==4.5.3.56', # headless not working with pyisntaller 
                 'fastremap', 'imagecodecs'
                 ]
 
@@ -13,9 +13,8 @@ gui_deps = [
         'PyQt6', 
         'PyQt6.sip',
         'google-cloud-storage',
-        # 'pyqtdarktheme',
         'pyqtdarktheme@git+https://github.com/kevinjohncutler/pyqtdarktheme#egg=pyqtdarktheme',
-        'superqt'
+        'superqt','colour'
         ]
 
 docs_deps = [

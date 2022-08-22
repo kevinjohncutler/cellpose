@@ -381,11 +381,15 @@ def _load_seg(parent, filename=None, image=None, image_file=None):
             except:
                 parent.flows = [[],[],[],[],[[]]]
             parent.recompute_masks = False
-    
+            
+
     # Added functionality to jump right back into parameter tuning from saved flows 
     if 'model_path' in dat:
         parent.current_model = dat['model_path']
         parent.initialize_model()
+    
+    if 'runstring' in dat:
+        parent.runstring.setPlainText(dat['runstring'])
     
     parent.enable_buttons()
     parent.update_layer()
@@ -530,7 +534,8 @@ def _save_sets(parent):
                  'zdraw': parent.zdraw,
                  'model_path': parent.current_model_path if hasattr(parent, 'current_model_path') else 0,
                  'flow_threshold': flow_threshold,
-                 'cellprob_threshold': cellprob_threshold
+                 'cellprob_threshold': cellprob_threshold,
+                 'runstring': parent.runstring.toPlainText()
                  })
     else:
         image = parent.chanchoose(parent.stack[parent.currentZ].copy())
@@ -549,6 +554,8 @@ def _save_sets(parent):
                  'manual_changes': parent.track_changes,
                  'model_path': parent.current_model_path if hasattr(parent, 'current_model_path') else 0,
                  'flow_threshold': flow_threshold,
-                 'cellprob_threshold': cellprob_threshold})
+                 'cellprob_threshold': cellprob_threshold,
+                 'runstring': parent.runstring.toPlainText()
+                })
     #print(parent.point_sets)
     print('GUI_INFO: %d ROIs saved to %s'%(parent.ncells, base + '_seg.npy'))
