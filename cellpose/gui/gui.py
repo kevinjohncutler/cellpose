@@ -53,6 +53,8 @@ if OMNI_INSTALLED:
     #logo 
     ICON_PATH = pathlib.Path.home().joinpath('.omnipose','logo.png')
     ICON_URL = 'https://github.com/kevinjohncutler/omnipose/blob/main/gui/logo.png?raw=true'
+
+    
     
     #test files
     op_dir = pathlib.Path.home().joinpath('.omnipose','test_files')
@@ -86,6 +88,14 @@ else:
 if not ICON_PATH.is_file():
     print('downloading logo from', ICON_URL,'to', ICON_PATH)
     download_url_to_file(ICON_URL, ICON_PATH, progress=True)
+
+# Not everyone with have a math font installed, so all this effort just to have
+# a cute little math-style gamma as a slider label...
+GAMMA_PATH = pathlib.Path.home().joinpath('.omnipose','gamma.svg')
+GAMMA_URL = 'https://github.com/kevinjohncutler/omnipose/blob/main/gui/gamma.svg?raw=true'   
+if not GAMMA_PATH.is_file():
+    print('downloading gamma icon from', GAMMA_URL,'to', GAMMA_PATH)
+    download_url_to_file(GAMMA_URL, GAMMA_PATH, progress=True)
     
 
 #Define possible models; can we make a master list in another file to use in models and main? 
@@ -589,26 +599,16 @@ class MainW(QMainWindow):
         # b+=1
         label = QLabel('\u2702')
         label.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
-        label.setStyleSheet('color: #8f8f8f')
+        label.setStyleSheet('color: #888888')
         label.setFont(QtGui.QFont("Arial", 18, QtGui.QFont.Bold))
         self.l0.addWidget(label, b,c,1,1)
         
         
         b+=1
-
         button = QPushButton('')
-        button.setIcon(QtGui.QIcon('/Volumes/DataDrive/omnipose/docs/_static/gamma.svg'))
-        button.setStyleSheet("QPushButton {Text-align: middle; background-color: none; color: white}")
-        
-        
-        button.setEnabled(False)
-        # button.setStyleSheet(self.styleInactive)
-        button.setFont(self.boldfont_button)
-        button.setLayoutDirection(QtCore.Qt.RightToLeft)
-
-        # button.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Expanding)
-        
-        
+        button.setIcon(QtGui.QIcon(str(GAMMA_PATH)))
+        button.setStyleSheet("QPushButton {Text-align: middle; background-color: none; color: black}")
+        button.setDefault(True)
         self.l0.addWidget(button, b,c,1,1)
         
         # self.l0.addWidget(label, b,c,1,1)
