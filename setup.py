@@ -4,7 +4,7 @@ from setuptools import setup
 install_deps = ['numpy>=1.22.4', 'scipy', 'natsort',
                 'tifffile', 'tqdm', 'numba', 
                 'torch>=1.6',
-                'opencv-python==4.5.5.64', # headless not working with pyisntaller 
+                'opencv-python==4.5.5.64', # headless not working with pyinstaller 
                 'fastremap', 'imagecodecs'
                 ]
 

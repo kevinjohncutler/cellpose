@@ -243,15 +243,15 @@ class MainW(QMainWindow):
         # self.setStyleSheet("QMainWindow {background: 'black';}")
         self.stylePressed = ''.join(["QPushButton {Text-align: middle; ",
                              "background-color: {};".format('#484848'),
-                             # "border-color: white;",
+                             "border-color: #565656;",
                              "color:white;}"])
         self.styleUnpressed = ("QPushButton {Text-align: middle; "
                                "background-color: #303030; "
-                                # "border-color: white;"
+                                "border-color: #565656;"
                                "color: #fff;}")
         self.styleInactive = ("QPushButton {Text-align: middle; "
                               "background-color: #303030; "
-                             # "border-color: white;"
+                             "border-color: #565656;"
                               "color: #fff;}")
         self.textbox_style = ('background-color: black;')
 
@@ -263,7 +263,8 @@ class MainW(QMainWindow):
         if scrollable:
             self.l0 = QGridLayout(self)
             self.scrollArea = QScrollArea(self)
-            self.scrollArea.setStyleSheet('border: none; ')
+            self.scrollArea.setStyleSheet('QScrollArea {border: none;}') # just for main window
+            
             self.scrollArea.setWidgetResizable(True)
             # policy = QtWidgets.QSizePolicy()
             # policy.setRetainSizeWhenHidden(True)
@@ -289,7 +290,9 @@ class MainW(QMainWindow):
         self.imask = 0
 
         b = self.make_buttons()
-
+        # self.cwidget.setStyleSheet('border: 1px; border-radius: 10px')
+        
+        
         # ---- drawing area ---- #
         self.win = pg.GraphicsLayoutWidget()
         self.l0.addWidget(self.win, 0, TOOLBAR_WIDTH+1, b, 3*b)
@@ -998,7 +1001,7 @@ class MainW(QMainWindow):
         self.l0.addWidget(self.ModelButton, b,0,1,c)
         self.ModelButton.setEnabled(False)
         # self.ModelButton.setStyleSheet(self.styleInactive)
-        self.ModelButton.setStyleSheet('QPushButton {border: 1px yellow; background-color: #303030; }')
+        self.ModelButton.setStyleSheet('QPushButton {border-color: white; background-color: #484848; }')
         # 'QComboBox QAbstractItemView { color: white;',
         #                 'background-color: #303030;',
         #                 'selection-color: white; ',
