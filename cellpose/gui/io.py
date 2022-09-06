@@ -486,8 +486,9 @@ def _masks_to_gui(parent, masks, outlines=None, format_labels=False):
         parent.toggle_mask_ops()
     parent.ismanual = np.zeros(parent.ncells, bool)
     parent.zdraw = list(-1*np.ones(parent.ncells, np.int16))
-    parent.update_plot()
     parent.update_layer()
+    # parent.update_plot()
+
 
 def _save_png(parent):
     """ save masks to png or tiff (if 3D) """

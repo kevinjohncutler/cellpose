@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 import tempfile
 import cv2
 from scipy.stats import mode
-from . import transforms, dynamics, utils, metrics
+from . import transforms, dynamics, utils, metrics, io
 
 try:
     from mxnet import gluon, nd
@@ -910,10 +910,14 @@ class UnetModel():
 
         # compute average cell diameter
         if rescale:
-            diam_train = np.array([utils.diameters(train_labels[k][0],omni=self.omni)[0] for k in range(len(train_labels))])
+            for k in range(len(train_labels)):
+                print('ggg',train_labels[k][0].shape,np.unique(train_labels[k][0]))
+            diam_train = np.array([utils.diameters(train_labels[k][0],omni=self.omni)[0] 
+                                   for k in range(len(train_labels))])
             diam_train[diam_train<5] = 5.
             if test_data is not None:
-                diam_test = np.array([utils.diameters(test_labels[k][0],omni=self.omni)[0] for k in range(len(test_labels))])
+                diam_test = np.array([utils.diameters(test_labels[k][0],omni=self.omni)[0] 
+                                      for k in range(len(test_labels))])
                 diam_test[diam_test<5] = 5.
             scale_range = 0.5
             core_logger.info('>>>> median diameter set to = %d'%self.diam_mean)
@@ -938,8 +942,9 @@ class UnetModel():
             _, file_label = os.path.split(save_path)
             file_path = os.path.join(save_path, 'models/')
 
-            if not os.path.exists(file_path):
-                os.makedirs(file_path)
+            # if not os.path.exists(file_path):
+            #     os.makedirs(file_path)
+            io.check_dir(file_path)
         else:
             core_logger.warning('WARNING: no save_path given, model not saving')
 

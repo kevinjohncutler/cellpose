@@ -106,12 +106,10 @@ def show_segmentation(fig, img, maski, flowi, channels=[0,0], file_name=None, om
     img0 = img.copy()
     img0 = transforms.reshape(img0,channels=channels) # this makes sure channel axis is last 
     
-    print('shape',img.shape,img0.shape)
     if img0.shape[0] < 4:
         img0 = np.transpose(img0, (1,2,0))
     if img0.shape[-1] < 3 or img0.ndim < 3:
         img0 = image_to_rgb(img0, channels=channels, omni=omni)
-    print('shape2',img0.shape,img0.max())
 
     img0 = (transforms.normalize99(img0,omni=omni)*(2**8-1)).astype(np.uint8)
     
@@ -137,10 +135,8 @@ def show_segmentation(fig, img, maski, flowi, channels=[0,0], file_name=None, om
         colors = np.array(list(c.values()))[1:]
         # img1 = normalize99(np.mean(img1,axis=-1),omni=True)
         img1 = rescale(color.rgb2gray(img1))
-        print('shape3',img1.shape,maski.shape,img1.min(),img1.max())
 
         overlay = color.label2rgb(ncolor.label(maski,max_depth=20),img1,colors,bg_label=0,alpha=1/3)
-        print('shape4',overlay.shape,overlay.min(),overlay.max())
         
         # overlay = np.uint8(np.clip(overlay, 0, 1))
         # overlay[maski==0] = img1[maski==0] #restore original level to background regions

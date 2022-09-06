@@ -51,11 +51,11 @@ with open("README.md", "r") as fh:
     
     
 setup(
-    name="cellpose",
+    name="cellpose-for-omnipose",
     license="BSD",
-    author="Marius Pachitariu and Carsen Stringer",
-    author_email="stringerc@janelia.hhmi.org",
-    description="anatomical segmentation algorithm",
+    author="Kevin Cutler",
+    author_email="kevinjohncutler@outlook.com",
+    description="cellpose fork developed for omnipose",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/MouseLand/cellpose",

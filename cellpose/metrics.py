@@ -121,6 +121,7 @@ def average_precision(masks_true, masks_pred, threshold=[0.5, 0.75, 0.9]):
         fp[n] = n_pred[n] - tp[n]
         fn[n] = n_true[n] - tp[n]
         ap[n] = tp[n] / (tp[n] + fp[n] + fn[n]) # this is the jaccard index, not precision, right? 
+        # this is tp[n] / (tp[n] + n_pred[n] - tp[n] + n_true[n] - tp[n]) = tp[n] / ( n_pred[n] + n_true[n] - tp[n])
         
     if not_list:
         ap, tp, fp, fn = ap[0], tp[0], fp[0], fn[0]

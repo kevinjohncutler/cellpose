@@ -156,8 +156,7 @@ def make_quadrants(parent, yp):
         parent.quadbtns.addButton(btn, b)
         parent.l0.addWidget(btn, yp + parent.quadbtns.button(b).ypos, TOOLBAR_WIDTH-3+parent.quadbtns.button(b).xpos, 1, 1)
         btn.setEnabled(True)
-        b += 1
-    parent.quadbtns.setExclusive(True)
+    parent.quadbtns.setExclusive(True) # this makes the loop below unneeded 
 
 class QuadButton(QPushButton):
     """ custom QPushButton class for quadrant plotting
@@ -168,21 +167,25 @@ class QuadButton(QPushButton):
         super(QuadButton,self).__init__(parent)
         self.setText(Text)
         self.setCheckable(True)
-        self.setStyleSheet(parent.styleUnpressed)
+        # self.setStyleSheet(parent.styleUnpressed)
         # self.setFont(QtGui.QFont("Arial", 10))
-        self.resize(self.minimumSizeHint())
-        self.setMaximumWidth(WIDTH_0)
-        self.setMaximumHeight(WIDTH_0)
+        # self.resize(self.minimumSizeHint())
+        self.setFixedWidth(WIDTH_0)
+        self.setFixedHeight(WIDTH_0)
         self.xpos = bid%3
         self.ypos = int(np.floor(bid/3))
         self.clicked.connect(lambda: self.press(parent, bid))
         self.show()
 
     def press(self, parent, bid):
-        for b in range(9):
-            if parent.quadbtns.button(b).isEnabled():
-                parent.quadbtns.button(b).setStyleSheet(parent.styleUnpressed)
-        self.setStyleSheet(parent.stylePressed)
+        # for b in range(9):
+        #     if parent.quadbtns.button(b).isEnabled():
+        #         # parent.quadbtns.button(b).setStyleSheet(parent.styleUnpressed)
+        #         parent.quadbtns.button(b).setChecked(False)
+
+
+        # self.setStyleSheet(parent.stylePressed)
+        
         self.xrange = np.array([self.xpos-.2, self.xpos+1.2]) * parent.Lx/3
         self.yrange = np.array([self.ypos-.2, self.ypos+1.2]) * parent.Ly/3
         # change the zoom
@@ -190,87 +193,7 @@ class QuadButton(QPushButton):
         parent.p0.setYRange(self.yrange[0], self.yrange[1])
         parent.show()
 
-def horizontal_slider_style():
-    QSS =  """
-                /* Added for compatibility with superqt */
 
-                /* These two are particularly necessary */
-                QSlider{
-                 background-color: none;
-                } 
-
-                QSlider::add-page:vertical {
-                  background: none;
-                  border: none;
-                }
-
-                QSlider::add-page:horizontal {
-                  background: none;
-                  border: none;
-                }
-
-                /* qdarktheme sets this and messes things up */
-                QSlider::groove {}
-
-                QSlider::groove:horizontal {
-                    background: black;
-                    height: 4px;
-                    border-radius: 4px;
-                    border: 1px solid #777;
-                }
-
-                QSlider::sub-page:horizontal {
-                    background: #eee;
-                }
-                
-                QRangeSlider {
-                    qproperty-barColor: #eee;
-                }
-                
-                QSlider::handle:horizontal {
-                    border: 1px solid #777;
-                    width: 7px;
-                    border-radius: 4px;
-                    height: 40px;
-                }
-
-                QSlider::handle:horizontal:hover {
-                border: 1px solid #444;
-                border-radius: 4px;
-                }
-
-                /* QSlider::sub-page:horizontal:disabled {
-                background: #bbb;
-                border-color: #999;
-                }
-
-                QSlider::add-page:horizontal:disabled {
-                background: #eee;
-                border-color: #999;
-                }
-
-                QSlider::handle:horizontal:disabled {
-                background: #eee;
-                border: 1px solid #aaa;
-                border-radius: 4px;
-                
-                QSlider::groove:horizontal {
-                border: 1px solid #bbb;
-                background: black;
-                height: 4px;
-                border-radius: 4px;
-                }
-
-                QSlider::add-page:horizontal {
-                background: black;
-                border: 1px solid #777;
-                height: 4px;
-                border-radius: 4px;
-                } */
-
-
-            """
-    return QSS
 
 class ExampleGUI(QDialog):
     def __init__(self, parent=None):
@@ -462,14 +385,14 @@ class RGBRadioButtons(QButtonGroup):
         self.dropdown = []
         for b in range(len(self.bstr)):
             button = QRadioButton(self.bstr[b])
-            button.setStyleSheet('color: white;')
+            # button.setStyleSheet('color: white;')
             button.setFont(parent.medfont)
             if b==0:
                 button.setChecked(True)
             self.addButton(button, b)
-            button.toggled.connect(lambda: self.btnpress(parent))
+            button.clicked.connect(lambda: self.btnpress(parent)) #"toggled" sends update twice
             self.parent.l0.addWidget(button, row+b,col,1,2)
-        self.setExclusive(True)
+        # self.setExclusive(True)
         #self.buttons.
 
     def btnpress(self, parent):
@@ -926,3 +849,103 @@ class RangeSlider(QSlider):
         return style.sliderValueFromPosition(self.minimum(), self.maximum(),
                                              pos-slider_min, slider_max-slider_min,
                                              opt.upsideDown)
+
+    
+    
+class HistLUT(pg.HistogramLUTItem):
+    sigLookupTableChanged = QtCore.pyqtSignal(object)
+    sigLevelsChanged = QtCore.pyqtSignal(object)
+    sigLevelChangeFinished = QtCore.pyqtSignal(object)
+
+    def __init__(self, image=None, fillHistogram=True, levelMode='mono',
+                 gradientPosition='right', orientation='vertical'):
+        super().__init__(image=image,fillHistogram=fillHistogram,levelMode=levelMode,
+                         gradientPosition=gradientPosition,orientation=orientation)
+        
+        # self.gradient = GradientEditorItem(orientation=self.gradientPosition)
+        # self.gradient = GradEditor(orientation=self.gradientPosition) #overwrite with mine
+        
+        
+    def paint(self, p, *args):
+        # paint the bounding edges of the region item and gradient item with lines
+        # connecting them
+        if self.levelMode != 'mono' or not self.region.isVisible():
+            return
+
+        pen = self.region.lines[0].pen
+
+        mn, mx = self.getLevels()
+        vbc = self.vb.viewRect().center()
+        gradRect = self.gradient.mapRectToParent(self.gradient.gradRect.rect())
+        if self.orientation == 'vertical':
+            p1mn = self.vb.mapFromViewToItem(self, Point(vbc.x(), mn)) + Point(0, 5)
+            p1mx = self.vb.mapFromViewToItem(self, Point(vbc.x(), mx)) - Point(0, 5)
+            if self.gradientPosition == 'right':
+                p2mn = gradRect.bottomLeft()
+                p2mx = gradRect.topLeft()
+            else:
+                p2mn = gradRect.bottomRight()
+                p2mx = gradRect.topRight()
+        else:
+            p1mn = self.vb.mapFromViewToItem(self, Point(mn, vbc.y())) - Point(5, 0)
+            p1mx = self.vb.mapFromViewToItem(self, Point(mx, vbc.y())) + Point(5, 0)
+            if self.gradientPosition == 'bottom':
+                p2mn = gradRect.topLeft()
+                p2mx = gradRect.topRight()
+            else:
+                p2mn = gradRect.bottomLeft()
+                p2mx = gradRect.bottomRight()
+
+        p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        for pen in [pen]: #get rid of dirst entry, shadow of some sort
+            p.setPen(pen)
+
+            # lines from the linear region item bounds to the gradient item bounds
+            p.drawLine(p1mn, p2mn)
+            p.drawLine(p1mx, p2mx)
+
+            # lines bounding the edges of the gradient item
+            if self.orientation == 'vertical':
+                p.drawLine(gradRect.topLeft(), gradRect.topRight())
+                p.drawLine(gradRect.bottomLeft(), gradRect.bottomRight())
+            else:
+                p.drawLine(gradRect.topLeft(), gradRect.bottomLeft())
+                p.drawLine(gradRect.topRight(), gradRect.bottomRight())
+                
+                
+        #change where gradienteditoritem is called and pass in my custom one
+        
+                
+class GradEditor(pg.GradientEditorItem):
+    sigGradientChanged = QtCore.pyqtSignal(object)
+    sigGradientChangeFinished = QtCore.pyqtSignal(object)
+    
+    def __init__(self, *args, **kargs):
+        super().__init__(*args, **kargs)
+              
+                
+# class Tick2(pg.Tick):  ## NOTE: Making this a subclass of GraphicsObject instead results in
+#                                     ## activating this bug: https://bugreports.qt-project.org/browse/PYSIDE-86
+#     ## private class
+
+#     # When making Tick a subclass of QtWidgets.QGraphicsObject as origin,
+#     # ..GraphicsScene.items(self, *args) will get Tick object as a
+#     # class of QtGui.QMultimediaWidgets.QGraphicsVideoItem in python2.7-PyQt5(5.4.0)
+
+#     sigMoving = QtCore.pyqtSignal(object, object)
+#     sigMoved = QtCore.pyqtSignal(object)
+#     sigClicked = QtCore.pyqtSignal(object, object)
+    
+#     # def __init__(self, pos, color, movable=True, scale=10, pen='w', removeAllowed=True):
+#     #     super().__init__(pos=pos,color=color,movable=movable,scale=scale,pen=pen,removeAllowed=removeAllowed)
+#     def __init__(self,*args):
+#         super.__init__(*args)
+
+#     def paint(self, p, *args):
+#         p.setRenderHints(QtGui.QPainter.RenderHint.Antialiasing)
+#         p.fillPath(self.pg, fn.mkBrush(self.color))
+        
+#         p.setPen(self.currentPen)
+#         p.setHoverPen(self.hoverPen)
+#         p.drawPath(self.pg)
+

@@ -4,8 +4,9 @@ from natsort import natsorted
 from tqdm import tqdm, trange
 
 from PyQt6 import QtGui, QtCore, QtWidgets, QtSvgWidgets
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSlot
 from PyQt6.QtWidgets import QMainWindow, QApplication, QWidget, QScrollBar, QSlider, QComboBox, QGridLayout, QPushButton, QFrame, QCheckBox, QLabel, QProgressBar, QLineEdit, QMessageBox, QGroupBox, QDoubleSpinBox, QPlainTextEdit, QScrollArea
+from PyQt6.QtGui import QColor, QPalette
 import pyqtgraph as pg
 # from pyqtgraph import GraphicsScene
 
@@ -54,7 +55,6 @@ if OMNI_INSTALLED:
     ICON_PATH = pathlib.Path.home().joinpath('.omnipose','logo.png')
     ICON_URL = 'https://github.com/kevinjohncutler/omnipose/blob/main/gui/logo.png?raw=true'
 
-    
     
     #test files
     op_dir = pathlib.Path.home().joinpath('.omnipose','test_files')
@@ -109,7 +109,7 @@ class TextField(QPlainTextEdit):
     clicked= QtCore.pyqtSignal()
     def __init__(self,widget,parent=None):
         super().__init__(widget)
-        self.setStyleSheet(self.parent().textbox_style)
+        # self.setStyleSheet(self.parent().textbox_style)
     def mousePressEvent(self,QMouseEvent):
         self.clicked.emit()
 
@@ -164,6 +164,10 @@ def interpZ(mask, zdraw):
         #mask[z] = (Ml + Mu) / (norml + normu)  > 0.5
     return mask, zfill
         
+
+    
+import darkdetect
+    
 global logger
 def run(image=PRELOAD_IMAGE):
     signal.signal(signal.SIGINT, signal.SIG_DFL)
@@ -180,8 +184,6 @@ def run(image=PRELOAD_IMAGE):
     clipboard = app.clipboard()
 
     qdarktheme.clear_cache()
-    app.setStyleSheet(qdarktheme.load_stylesheet())
-
 
     icon_path = pathlib.Path.home().joinpath('.cellpose', 'logo.png')
     guip_path = pathlib.Path.home().joinpath('.cellpose', 'cellpose_gui.png')
@@ -205,7 +207,30 @@ def run(image=PRELOAD_IMAGE):
     app.setWindowIcon(app_icon) # self.
 
     # models.download_model_weights() # does not exist
-    MainW(size, clipboard, image=image)
+    win = MainW(size, clipboard, image=image)
+    # the below code block will automatically toggle the theme with the system,
+    # but the manual color definitions (everytwhere I set a style sheet) mess that up
+    sync = 1
+    if sync:
+        @pyqtSlot()
+        def sync_theme_with_system() -> None:
+            theme = darkdetect.theme().lower()
+            stylesheet = qdarktheme.load_stylesheet(theme)
+            QApplication.instance().setStyleSheet(stylesheet)
+            win.darkmode = theme=='dark'
+            win.accent = win.palette().brush(QPalette.Highlight).color()
+            if hasattr(win,'win'):
+                win.win.setBackground("k" if win.darkmode else '#f0f0f0') #pull out real colors from theme here from example
+            win.set_hist_colors()
+            win.set_button_color()
+            win.set_crosshair_colors()
+            # win.update_plot()
+        app.paletteChanged.connect(sync_theme_with_system)      
+        sync_theme_with_system()
+    else:
+        # app.setStyleSheet(qdarktheme.load_stylesheet())
+        print('ff')
+    
     ret = app.exec()
     sys.exit(ret)
 
@@ -222,6 +247,13 @@ def get_unique_points(set):
 class MainW(QMainWindow):
     def __init__(self, size, clipboard, image=None):
         super(MainW, self).__init__()
+            # palette = app.palette()
+            # palette.setColor(QPalette.ColorRole.Link, dark_palette.link().color())
+            # app.setPalette(palette)
+
+        # print(qdarktheme.load_palette().link().color())
+        
+        self.darkmode = darkdetect.theme().lower() == 'dark' # have to initialize 
 
         pg.setConfigOptions(imageAxisOrder="row-major")
         self.clipboard = clipboard
@@ -240,20 +272,33 @@ class MainW(QMainWindow):
         self.model_strings = models.MODEL_NAMES.copy()
 
         
-        # self.setStyleSheet("QMainWindow {background: 'black';}")
+        # self.setStyleSheet("QMainWindow {background:'black';}")
+        # self.stylePressed = ''.join(["QPushButton {Text-align: middle; ",
+        #                      "background-color: {};".format('#484848'),
+        #                      "border-color: #565656;",
+        #                      "color:white;}"])
+        c = self.palette().brush(QPalette.Base).color()
+        text_color = 'rgba'+str(self.palette().brush(QPalette.Text).color().getRgb())
+        self.styleUnpressed = ''.join(["QPushButton {Text-align: middle; ",
+                                       "background-color: {}; ".format('rgba'+str(c.getRgb())),
+                                       "color: {}; ".format(text_color),
+                                       "}"])
+        c = self.palette().brush(QPalette.Button).color()
         self.stylePressed = ''.join(["QPushButton {Text-align: middle; ",
-                             "background-color: {};".format('#484848'),
-                             "border-color: #565656;",
-                             "color:white;}"])
-        self.styleUnpressed = ("QPushButton {Text-align: middle; "
-                               "background-color: #303030; "
-                                "border-color: #565656;"
-                               "color: #fff;}")
-        self.styleInactive = ("QPushButton {Text-align: middle; "
-                              "background-color: #303030; "
-                             "border-color: #565656;"
-                              "color: #fff;}")
-        self.textbox_style = ('background-color: black;')
+                                       "background-color: {}; ".format('rgba'+str(c.getRgb())),
+                                        "border-color: {}; ".format('rgba'+str(self.palette().brush(QPalette.ButtonText).color().getRgb())),
+                                       "color: {}; ".format(text_color),
+                                       "}"])
+        # self.styleInactive = ("QPushButton {Text-align: middle; "
+        #                       "background-color: #303030; "
+        #                      "border-color: #565656;"
+        #                       "color: #fff;}")
+        self.stylePressed = ''
+        self.styleUnpressed = '' 
+        # c.setAlpha(20)
+        # region.setBrush(c) # I hate the blue background getRgb(c)
+        self.styleInactive = ''
+        self.textbox_style = ''#background-color: black;
 
         self.loaded = False
 
@@ -304,18 +349,7 @@ class MainW(QMainWindow):
         # self.l0.setMaximumWidth(100)
         self.ScaleOn.setChecked(False)  # can only toggle off after make_viewbox is called 
 
-        ### bwr is not perceptually uniform; replace with a new colormap 
-        # bwrmap = make_bwr()
-        # self.bwr = bwrmap.getLookupTable(start=0.0, stop=255.0, alpha=False)
-        # self.bwr = pg.colormap.get('magma').getLookupTable()
-        
-        # #costom colormaps entirely replaced
-        # self.cmap = []
-        # # spectral colormap
-        # self.cmap.append(make_spectral().getLookupTable(start=0.0, stop=255.0, alpha=False))
-        # # single channel colormaps
-        # for i in range(3):
-        #     self.cmap.append(make_cmap(i).getLookupTable(start=0.0, stop=255.0, alpha=False))
+        # hard-coded colormaps entirely replaced with pyqtgraph
 
         if MATPLOTLIB:
             self.colormap = (plt.get_cmap('gist_ncar')(np.linspace(0.0,.9,1000000)) * 255).astype(np.uint8)
@@ -339,7 +373,7 @@ class MainW(QMainWindow):
                                 'learning_rate': 0.1, 
                                 'weight_decay': 0.0001, 
                                 'n_epochs': 100,
-                                'model_name': 'CP' + d.strftime("_%Y%m%d_%H%M%S")
+                                'model_name':'CP' + d.strftime("_%Y%m%d_%H%M%S")
                                }
         
         self.setAcceptDrops(True)
@@ -349,7 +383,8 @@ class MainW(QMainWindow):
         # policy = QtWidgets.QSizePolicy()
         # policy.setRetainSizeWhenHidden(True)
         # self.p0.setSizePolicy(policy)
-
+    
+                    
     def help_window(self):
         HW = guiparts.HelpWindow(self)
         HW.show()
@@ -363,24 +398,23 @@ class MainW(QMainWindow):
         EG.show()
 
     def make_buttons(self):
-        label_style = """QLabel{
-                            color: #fff
-                            } """
+        label_style = ''
         COLORS[0] = '#545454'
         self.boldfont = QtGui.QFont("Arial", 16, QtGui.QFont.Bold)
         self.boldfont_button = QtGui.QFont("Arial", 12, QtGui.QFont.Bold)
         
         self.medfont = QtGui.QFont("Arial", 12)
         self.smallfont = QtGui.QFont("Arial", 10)
-        self.headings = ('color: white;')
+        self.headings = ''
         # self.dropdowns = ("QComboBox QAbstractItemView { color: white;"
         #                   "background-color: #303030;"
         #                   "selection-color: white; "
         #                   "min-width: 100px; }")
         #                 # "selection-background-color: rgb(50,100,50);")
-        self.checkstyle = ("color: white;"
-                          "selection-background-color: {};").format(COLORS[0])
-        self.linestyle = 'color: white; background-color: #111'
+        # self.checkstyle = ("color: white;"
+        #                   "selection-background-color: {};").format(COLORS[0])
+        self.checkstyle = ''
+        self.linestyle = ''
 
         label = QLabel('Views:')#[\u2191 \u2193]')
         label.setStyleSheet('color: {}'.format(COLORS[0]))
@@ -400,7 +434,7 @@ class MainW(QMainWindow):
         
         b+=5
         # c+=1
-        label = QLabel('color map: ')
+        label = QLabel('color map:')
         label.setToolTip('Built-in pyqtgraph color maps')
         label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         label.setStyleSheet(label_style)
@@ -411,7 +445,7 @@ class MainW(QMainWindow):
         
 #                 b+=1
 #         c = TOOLBAR_WIDTH//2
-#         label = QLabel('pen size: ')
+#         label = QLabel('pen size:')
 #         label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 #         label.setStyleSheet(label_style)
 #         label.setFont(self.medfont)
@@ -451,14 +485,14 @@ class MainW(QMainWindow):
         
         
         b = 1
-        self.quadrant_label = QLabel('image sectors')
+        self.quadrant_label = QLabel('sectors')
         self.quadrant_label.setFixedWidth(WIDTH_3)
 
         self.quadrant_label.setToolTip('Double-click anywhere in the image to re-center')
         self.quadrant_label.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
         
         self.quadrant_label.setStyleSheet(label_style)
-        self.quadrant_label.setFont(self.medfont)
+        self.quadrant_label.setFont(self.boldfont_button)
       
 
         c = TOOLBAR_WIDTH//2 
@@ -478,9 +512,11 @@ class MainW(QMainWindow):
         # b-=1
         c0 = TOOLBAR_WIDTH//2 - 1
         self.orthobtn = QCheckBox('orthoviews')
+        # self.orthobtn.setLayoutDirection(Qt.RightToLeft)
         self.orthobtn.setStyleSheet(label_style)
+        self.orthobtn.setStyleSheet("margin-left:50%;")
         self.orthobtn.setToolTip('activate orthoviews with 3D image')
-        self.orthobtn.setFont(self.medfont)
+        self.orthobtn.setFont(self.boldfont_button)
         self.orthobtn.setChecked(False)
         self.l0.addWidget(self.orthobtn, b,c0,1,2)
         self.orthobtn.toggled.connect(self.toggle_ortho)
@@ -489,54 +525,60 @@ class MainW(QMainWindow):
 
         # add z position 
         self.currentZ = 0
-        label = QLabel('Z slice: ')
+        label = QLabel('Z slice:')
         label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         label.setStyleSheet(label_style)
         label.setFont(self.medfont)
 
         self.l0.addWidget(label, b,c0-1,1,2)
         self.zpos = QLineEdit()
-        self.zpos.setStyleSheet(self.textbox_style)
-        self.zpos.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        # self.zpos.setStyleSheet(self.textbox_style)
+        self.zpos.setAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter)
         # self.zpos.setAlignment(QtCore.Qt.AlignLeft)
         self.zpos.setText(str(self.currentZ))
         self.zpos.returnPressed.connect(self.compute_scale)
         self.zpos.setFixedWidth(INPUT_WIDTH)
+        self.zpos.setFixedHeight(WIDTH_0)
+        
         # self.l0.addWidget(self.zpos, b, c,1, TOOLBAR_WIDTH-c)
         self.l0.addWidget(self.zpos, b, c0+1,1, 1)
 
         
 
         b+=1
-        label = QLabel('slice width: ')
+        label = QLabel('slice width:')
         label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         label.setStyleSheet(label_style)
         label.setFont(self.medfont)
         self.l0.addWidget(label, b,c0-1,1,2)
         self.dz = 11
         self.dzedit = QLineEdit()
-        self.dzedit.setStyleSheet(self.textbox_style)
-        self.dzedit.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        # self.dzedit.setStyleSheet(self.textbox_style)
+        self.dzedit.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
         self.dzedit.setText(str(self.dz))
         self.dzedit.returnPressed.connect(self.update_ortho)
         self.dzedit.setFixedWidth(INPUT_WIDTH)
+        self.dzedit.setFixedHeight(WIDTH_0)
+        
         # self.l0.addWidget(self.dzedit, b, c,1, TOOLBAR_WIDTH-c)
         self.l0.addWidget(self.dzedit, b, c0+1,1, 1)
         # c-w,1, w)
 
         b+=1
-        label = QLabel('aspect ratio: ')
+        label = QLabel('aspect ratio:')
         label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         label.setStyleSheet(label_style)
         label.setFont(self.medfont)
         self.l0.addWidget(label, b,c0-1,1,2)
         self.zaspect = 1.0
         self.zaspectedit = QLineEdit()
-        self.zaspectedit.setStyleSheet(self.textbox_style)
-        self.zaspectedit.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        # self.zaspectedit.setStyleSheet(self.textbox_style)
+        self.zaspectedit.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
         self.zaspectedit.setText(str(self.zaspect))
         self.zaspectedit.returnPressed.connect(self.update_ortho)
         self.zaspectedit.setFixedWidth(INPUT_WIDTH)
+        self.zaspectedit.setFixedHeight(WIDTH_0)
+        
         self.l0.addWidget(self.zaspectedit, b, c0+1,1, 1)
 
 
@@ -569,14 +611,14 @@ class MainW(QMainWindow):
         self.autobtn.setStyleSheet(self.checkstyle)
         self.autobtn.setFont(self.medfont)
         self.autobtn.setChecked(True)
-        self.l0.addWidget(self.autobtn, b,0,1,2)
+        self.l0.addWidget(self.autobtn, b,0,1,1)
         b+=1
         
         # use inverted image for running cellpose
         self.invert = QCheckBox('invert image')
         self.invert.setStyleSheet(self.checkstyle)
         self.invert.setFont(self.medfont)
-        self.l0.addWidget(self.invert, b,0,1,2)
+        self.l0.addWidget(self.invert, b,0,1,1)
         self.invert.toggled.connect(self.update_plot)
         
         b-=1
@@ -585,11 +627,12 @@ class MainW(QMainWindow):
         self.slider = superqt.QLabeledDoubleRangeSlider(QtCore.Qt.Orientation.Horizontal)
         
         self.slider.setDecimals(2) 
+        # self.slider.label_shift_x = -10
         self.slider.setHandleLabelPosition(superqt.QLabeledRangeSlider.LabelPosition.NoLabel)
         self.slider.setEdgeLabelMode(superqt.QLabeledRangeSlider.EdgeLabelMode.LabelIsValue)
         self.slider.valueChanged.connect(self.level_change)
 
-        self.slider.setStyleSheet(guiparts.horizontal_slider_style())
+        # self.slider.setStyleSheet(guiparts.horizontal_slider_style())
 
         
         self.slider.setMinimum(0.0)
@@ -610,7 +653,7 @@ class MainW(QMainWindow):
         b+=1
         button = QPushButton('')
         button.setIcon(QtGui.QIcon(str(GAMMA_PATH)))
-        button.setStyleSheet("QPushButton {Text-align: middle; background-color: none; color: black}")
+        button.setStyleSheet("QPushButton {Text-align: middle; background-color: none;}")
         button.setDefault(True)
         self.l0.addWidget(button, b,c,1,1)
         
@@ -623,7 +666,7 @@ class MainW(QMainWindow):
         # self.gamma_slider.setEdgeLabelMode(superqt.QLabeledSlider.EdgeLabelMode.LabelIsValue)
         self.gamma_slider.valueChanged.connect(self.gamma_change)
 
-        self.gamma_slider.setStyleSheet(guiparts.horizontal_slider_style())
+        # self.gamma_slider.setStyleSheet(guiparts.horizontal_slider_style())
         
         self.gamma_slider.setMinimum(0)
         self.gamma_slider.setMaximum(2)
@@ -656,7 +699,7 @@ class MainW(QMainWindow):
 
         b+=1
         c = TOOLBAR_WIDTH//2
-        label = QLabel('pen size: ')
+        label = QLabel('pen size:')
         label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         label.setStyleSheet(label_style)
         label.setFont(self.medfont)
@@ -672,15 +715,13 @@ class MainW(QMainWindow):
         self.BrushChoose.setFixedWidth(WIDTH_3)
 
         self.l0.addWidget(self.BrushChoose, b, c,1, TOOLBAR_WIDTH-c)
-        
 
 
-
-        
         # turn off masks
         self.layer_off = False
         self.masksOn = True
         self.MCheckBox = QCheckBox('masks')
+        self.MCheckBox.setToolTip('Press X or M to toggle masks')
         self.MCheckBox.setStyleSheet(self.checkstyle)
         self.MCheckBox.setFont(self.medfont)
         self.MCheckBox.setChecked(self.masksOn)
@@ -691,6 +732,7 @@ class MainW(QMainWindow):
         b+=1
         self.ncolor = True
         self.NCCheckBox = QCheckBox('n-color')
+        self.NCCheckBox.setToolTip('Press C or N to toggle n-color masks')
         self.NCCheckBox.setStyleSheet(self.checkstyle)
         self.NCCheckBox.setFont(self.medfont)
         self.NCCheckBox.setChecked(self.ncolor)
@@ -702,6 +744,7 @@ class MainW(QMainWindow):
         # turn off outlines
         self.outlinesOn = False # turn off by default
         self.OCheckBox = QCheckBox('outlines')
+        self.OCheckBox.setToolTip('Press Z or O to toggle outlines')
         self.OCheckBox.setStyleSheet(self.checkstyle)
         self.OCheckBox.setFont(self.medfont)
         self.l0.addWidget(self.OCheckBox, b,0,1,2)
@@ -766,20 +809,20 @@ class MainW(QMainWindow):
         
         b+=1
         self.diameter = 30
-        label = QLabel('cell diameter: ')
+        label = QLabel('cell diameter:')
         label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         label.setStyleSheet(label_style)
         label.setFont(self.medfont)
-        label.setToolTip(('you can manually enter the approximate diameter for your cells, '
-                          '\nor press “calibrate” to let the model estimate it. '
-                          '\nThe size is represented by a disk at the bottom of the view window '
-                          '\n(can turn this disk off by unchecking “scale disk visible”)'))
+        text = ('you can manually enter the approximate diameter for your cells, '
+                  '\nor press “calibrate” to let the model estimate it. '
+                  '\nThe size is represented by a disk at the bottom of the view window '
+                  '\n(can turn this disk off by unchecking “scale disk visible”)')
+        label.setToolTip(text)
         self.Diameter = QLineEdit()
-        self.Diameter.setStyleSheet(self.textbox_style)
-        self.Diameter.setToolTip(('you can manually enter the approximate diameter for your cells, '
-                                  '\nor press “calibrate” to let the model estimate it. '
-                                  '\nThe size is represented by a disk at the bottom of the view window '
-                                  '\n(can turn this disk off by unchecking “scale disk visible”)'))
+        self.Diameter.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
+        
+        # self.Diameter.setStyleSheet(self.textbox_style)
+        self.Diameter.setToolTip(text)
         self.Diameter.setText(str(self.diameter))
         self.Diameter.setFont(self.medfont)
         self.Diameter.returnPressed.connect(self.compute_scale)
@@ -788,8 +831,10 @@ class MainW(QMainWindow):
         c = TOOLBAR_WIDTH//2
         self.l0.addWidget(label, b, c, 1,2)
         c+=1
-        self.l0.addWidget(self.Diameter, b, TOOLBAR_WIDTH-2,1,2)
         self.Diameter.setFixedWidth(INPUT_WIDTH) # twice width plus spacing
+        self.Diameter.setFixedHeight(WIDTH_0)
+        self.l0.addWidget(self.Diameter, b, TOOLBAR_WIDTH-2,1,2)
+
 
 
         
@@ -819,7 +864,7 @@ class MainW(QMainWindow):
         self.SizeModel.setFont(self.medfont)
         self.SizeModel.setChecked(False)
         self.SizeModel.setToolTip('sets whether or not to use a SizeModel for rescaling \nprior to running network')
-        self.l0.addWidget(self.SizeModel, b,0,1,-1)
+        self.l0.addWidget(self.SizeModel, b,0,1,2)
 
 
         
@@ -856,7 +901,7 @@ class MainW(QMainWindow):
         self.ModelChoose.setCurrentIndex(current_index)
         # print('debug',current_index,len(models.MODEL_NAMES),models.MODEL_NAMES,models.MODEL_NAMES.index(DEFAULT_MODEL))
         self.l0.addWidget(self.ModelChoose, b, TOOLBAR_WIDTH//2,1,TOOLBAR_WIDTH-TOOLBAR_WIDTH//2)
-        label = QLabel('model: ')
+        label = QLabel('model:')
         label.setStyleSheet(label_style)
         label.setFont(self.medfont)
         #update tooltip string 
@@ -881,7 +926,7 @@ class MainW(QMainWindow):
         self.ChannelChoose = [QComboBox(), QComboBox()]
         self.ChannelChoose[0].addItems(['gray','red','green','blue'])
         self.ChannelChoose[1].addItems(['none','red','green','blue'])
-        cstr = ['chan to segment:', 'chan2 (optional): ']
+        cstr = ['chan to segment:', 'chan2 (optional):']
         for i in range(2):
             self.ChannelChoose[i].setFixedWidth(WIDTH_5)
             self.ChannelChoose[i].setStyleSheet(self.dropdowns(width=WIDTH_5))
@@ -903,10 +948,31 @@ class MainW(QMainWindow):
             b+=1
         
         # post-hoc paramater tuning
-
         b+=1
         c = TOOLBAR_WIDTH//2 
-        label = QLabel('flow threshold: ')
+
+        label = QLabel('mask threshold:')
+        label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        
+        label.setToolTip('threshold on scalar output field to seed cell masks \n'
+                        '(set lower to include more pixels)')
+        label.setStyleSheet(label_style)
+        label.setFont(self.medfont)
+        self.l0.addWidget(label, b, c-1,1,1)
+        
+        # b+=1
+        self.cellprob = 0.0
+        self.probslider = superqt.QLabeledDoubleSlider(QtCore.Qt.Horizontal)
+        self.probslider.setRange(-6,6)
+        self.probslider.setValue(self.cellprob)
+        self.l0.addWidget(self.probslider, b, c,1,TOOLBAR_WIDTH-c)
+        self.probslider.setEnabled(False)
+        self.probslider.valueChanged.connect(self.compute_cprob)
+        
+        
+
+        b+=1
+        label = QLabel('flow threshold:')
         label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         
         label.setToolTip(('threshold on flow match to accept a mask \n(Set higher to remove poor predictions.'
@@ -918,38 +984,13 @@ class MainW(QMainWindow):
         # b+=1
         self.threshold = 0.0
         self.threshslider = superqt.QLabeledDoubleSlider(QtCore.Qt.Horizontal)
-        self.threshslider.setMinimum(0.0)
-        self.threshslider.setMaximum(5.0)
+        self.threshslider.setRange(0,5)
         self.threshslider.setValue(self.threshold)
         self.l0.addWidget(self.threshslider, b, c,1,TOOLBAR_WIDTH-c)
-        self.threshslider.setStyleSheet(guiparts.horizontal_slider_style())
         self.threshslider.setEnabled(False)
         self.threshslider.valueChanged.connect(self.compute_cprob)
         
-        b+=1
-        label = QLabel('mask threshold: ')
-        label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        
-        label.setToolTip('threshold on scalar output field to seed cell masks \
-                        (set lower to include more pixels)')
-        label.setStyleSheet(label_style)
-        label.setFont(self.medfont)
-        self.l0.addWidget(label, b, c-1,1,1)
-        
-        # b+=1
-        self.cellprob = 0.0
-        self.probslider = superqt.QLabeledDoubleSlider(QtCore.Qt.Horizontal)
-        self.probslider.setMinimum(-6.0)
-        self.probslider.setMaximum(6.0)
-        self.probslider.setValue(self.cellprob)
 
-        self.l0.addWidget(self.probslider, b, c,1,TOOLBAR_WIDTH-c)
-        self.probslider.valueChanged.connect(self.compute_cprob)
-        self.probslider.setStyleSheet(guiparts.horizontal_slider_style())
-        self.probslider.setEnabled(False)
-        
-        self.probslider.valueChanged.connect(self.compute_cprob)
-        
         
         
         # use GPU
@@ -1000,8 +1041,8 @@ class MainW(QMainWindow):
         self.ModelButton.clicked.connect(self.compute_model)
         self.l0.addWidget(self.ModelButton, b,0,1,c)
         self.ModelButton.setEnabled(False)
-        # self.ModelButton.setStyleSheet(self.styleInactive)
-        self.ModelButton.setStyleSheet('QPushButton {border-color: white; background-color: #484848; }')
+        
+        # self.ModelButton.setStyleSheet('QPushButton {border-color: white; background-color: #484848; }')
         # 'QComboBox QAbstractItemView { color: white;',
         #                 'background-color: #303030;',
         #                 'selection-color: white; ',
@@ -1077,7 +1118,7 @@ class MainW(QMainWindow):
         # self.ChannelChoose = [QComboBox(), QComboBox()]
         # self.ChannelChoose[0].addItems(['0: gray', '1: red', '2: green','3: blue'])
         # self.ChannelChoose[1].addItems(['0: none', '1: red', '2: green', '3: blue'])
-        # cstr = ['chan to segment:', 'chan2 (optional): ']
+        # cstr = ['chan to segment:', 'chan2 (optional):']
         # for i in range(2):
         #     #self.ChannelChoose[i].setFixedWidth(70)
         #     self.ChannelChoose[i].setStyleSheet(self.dropdowns)
@@ -1217,7 +1258,7 @@ class MainW(QMainWindow):
         # self.l0.addWidget(self.progress, b,0,1,5)
 
         self.roi_count = QLabel('0 ROIs')
-        self.roi_count.setStyleSheet('color: white;')
+        # self.roi_count.setStyleSheet('color: white;')
         self.roi_count.setFont(self.boldfont_button)
         self.roi_count.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
         w = TOOLBAR_WIDTH//2+1
@@ -1227,15 +1268,15 @@ class MainW(QMainWindow):
         
         
         self.progress = QProgressBar(self)
-        self.progress.setStyleSheet('''QProgressBar {
-                                    border-style: solid;
-                                    border-color: #565656;
+#         self.progress.setStyleSheet('''QProgressBar {
+#                                     border-style: solid;
+#                                     border-color: #565656;
 
-                                    border-width: 1px;
-                                    text-align: center;
-                                }
+#                                     border-width: 1px;
+#                                     text-align: center;
+#                                 }
 
-                                ''')
+#                                 ''')
         # self.progress.setStyleSheet(self.styleInactive)
         # self.progrss.text('Progress')
         self.progress.setValue(0)
@@ -1291,9 +1332,9 @@ class MainW(QMainWindow):
 
     
     def dropdowns(self,width=WIDTH_0):
-        return ''.join(['QComboBox QAbstractItemView { color: white;',
-                        'background-color: #303030;',
-                        'selection-color: white; ',
+        return ''.join(['QComboBox QAbstractItemView {',
+                        # 'background-color: #303030;',
+                        # 'selection-color: white; ',
                         'min-width: {};'.format(width),
                         '}'])
 
@@ -1400,8 +1441,11 @@ class MainW(QMainWindow):
                         gci = min(count-1, gci+1)
                     self.BrushChoose.setCurrentIndex(gci)
                     self.brush_choose()
-                if not updated:
-                    self.update_plot()
+                    
+                # if not updated: This appears not to be necessary 
+                #     self.update_plot()
+                
+                
                 elif event.modifiers() == QtCore.Qt.ControlModifier:
                     if event.key() == QtCore.Qt.Key_Z:
                         self.undo_action()
@@ -1537,7 +1581,7 @@ class MainW(QMainWindow):
             self.draw_layer()
             self.update_layer()
         if self.loaded:
-            self.update_plot()
+            # self.update_plot()
             self.update_layer()
 
     def toggle_ncolor(self):
@@ -1548,7 +1592,7 @@ class MainW(QMainWindow):
         io._masks_to_gui(self, self.cellpix, outlines=self.outpix, format_labels=True)
         self.redraw_masks(masks=self.masksOn, outlines=self.outlinesOn)
         if self.loaded:
-            self.update_plot()
+            # self.update_plot()
             self.update_layer()
 
     def level_change(self):
@@ -1589,27 +1633,18 @@ class MainW(QMainWindow):
         self.win.addItem(self.p0, 0, 0, rowspan=1, colspan=1)
         self.p0.setMenuEnabled(False)
         self.p0.setMouseEnabled(x=True, y=True)
-        hist = 1
-        if hist:
-            self.img = pg.ImageItem(viewbox=self.p0, parent=self,levels=(0,255))
-            self.img.autoDownsample = False
-            self.set_hist()
-            # print(self.hist.__dict__)
-            self.win.addItem(self.hist,col=0,row=2)
-            self.layer = guiparts.ImageDraw(viewbox=self.p0, parent=self)
-            # self.layer.setLevels([0,255])
-            self.scale = pg.ImageItem(viewbox=self.p0, parent=self,levels=(0,255))
-            # self.scale.setLevels([0,255])
+        self.img = pg.ImageItem(viewbox=self.p0, parent=self,levels=(0,255))
+        self.img.autoDownsample = False
+        
+        # self.hist = pg.HistogramLUTItem(image=self.img,orientation='horizontal',gradientPosition='bottom')
+        self.hist = guiparts.HistLUT(image=self.img,orientation='horizontal',gradientPosition='bottom')
 
+        # self.set_hist_colors() #called elsewhere. no need
+        # print(self.hist.__dict__)
+        self.win.addItem(self.hist,col=0,row=2)
+        self.layer = guiparts.ImageDraw(viewbox=self.p0, parent=self)
+        self.scale = pg.ImageItem(viewbox=self.p0, parent=self,levels=(0,255))
 
-        else:
-            self.img = pg.ImageItem(viewbox=self.p0, parent=self,levels=(0,255))
-            self.img.autoDownsample = False
-            self.layer = guiparts.ImageDraw(viewbox=self.p0, parent=self)
-            self.layer.setLevels([0,255])
-            self.scale = pg.ImageItem(viewbox=self.p0, parent=self)
-            self.scale.setLevels([0,255])
-            #self.p0.setMouseEnabled(x=False,y=False)
         self.Ly,self.Lx = 512,512
         
         self.p0.scene().contextMenuItem = self.p0
@@ -1648,25 +1683,52 @@ class MainW(QMainWindow):
         self.pOrtho[0].linkView(self.pOrtho[0].YAxis, self.p0)
         self.pOrtho[1].linkView(self.pOrtho[1].XAxis, self.p0)
         
-    def set_hist(self):
-        self.hist = pg.HistogramLUTItem(image=self.img,orientation='horizontal',gradientPosition='botom')
-
+    def set_hist_colors(self):
         region = self.hist.region
-        region.setBrush(color=(255,)*3+(30,)) # I hate the blue background
-        region.setHoverBrush(color=(255,)*3+(60,)) # also the blue hover
-
+        # c = self.palette().brush(QPalette.Text).color() # selects white or black from palette
+        # selecting from the palette can be handy, but the corresponding colors in light and dark mode do not match up well
+        color = '#44444450' if self.darkmode else '#cccccc50'
+        # c.setAlpha(20)
+        region.setBrush(color) # I hate the blue background
+        
+        c = self.accent
+        c.setAlpha(60)
+        region.setHoverBrush(c) # also the blue hover
+        c.setAlpha(255) # reset accent alpha 
+        
+        color = '#777' if self.darkmode else '#aaa'
+        pen =  pg.mkPen(color=color,width=1.5)
+        ph =  pg.mkPen(self.accent,width=2)
+        # region.lines[0].setPen(None)
+        # region.lines[0].setHoverPen(color='c',width = 5)
+        # region.lines[1].setPen('r')
+        
+        # self.hist.paint(self.hist.plot)
+        # print('sss',self.hist.regions.__dict__)
+        
         for line in region.lines:
-            line.setPen(color=(255,)*3+(100,))
-            line.setHoverPen(color=(255,)*3+(200,))
-
+            # c.setAlpha(100)
+            line.setPen(pen)
+            # c.setAlpha(200)
+            line.setHoverPen(ph)
+        
+        self.hist.gradient.gradRect.setPen(pen)
+        # c.setAlpha(100)
+        self.hist.gradient.tickPen = pen
+        self.set_tick_hover_color() 
+        
         ax = self.hist.axis
-        ax.setPen(color=(0,)*4)
+        ax.setPen(color=(0,)*4) # transparent 
         # ax.setTicks([0,255])
         # ax.setStyle(stopAxisAtTick=(True,True))
 
         # self.hist = self.img.getHistogram()
         # self.hist.disableAutoHistogramRange()
-        self.hist.fillHistogram(fill=True, level=1.0, color='#111')
+        # c = self.palette().brush(QPalette.ToolTipBase).color() # selects white or black from palette
+        # print(c.getRgb(),'ccc')
+        
+        # c.setAlpha(100)
+        self.hist.fillHistogram(fill=True, level=1.0, color= '#222' if self.darkmode else '#bbb')
         self.hist.axis.style['showValues'] = 0
         self.hist.axis.style['tickAlpha'] = 0
         self.hist.axis.logMode = 1
@@ -1678,6 +1740,22 @@ class MainW(QMainWindow):
         # self.hist.setSizePolicy(policy)
         
         # self.histmap_img = self.hist.saveState()
+    
+    
+    def set_tick_hover_color(self):
+        for tick in self.hist.gradient.ticks:
+            tick.hoverPen = pg.mkPen(self.accent,width=2)
+            
+    def set_button_color(self):
+        color = '#efefef' if self.darkmode else '#888888'
+        self.ModelButton.setStyleSheet('border: 2px solid {};'.format(color))
+            
+    def set_crosshair_colors(self):
+        pen = pg.mkPen(self.accent)
+        self.vLine.setPen(pen)
+        self.hLine.setPen(pen)
+        [l.setPen(pen) for l in self.vLineOrtho]
+        [l.setPen(pen) for l in self.hLineOrtho]
             
     def add_orthoviews(self):
         self.yortho = self.Ly//2
@@ -1757,10 +1835,11 @@ class MainW(QMainWindow):
             self.p0.setYRange(0,dy) #centers in y
             self.p0.setXRange(0,dx)
             
-        # unselect sector
+        # unselect sector buttons
+        self.quadbtns.setExclusive(False)
         for b in range(9):
-            if self.quadbtns.button(b).isEnabled():
-                self.quadbtns.button(b).setStyleSheet(self.styleUnpressed)
+            self.quadbtns.button(b).setChecked(False)      
+        self.quadbtns.setExclusive(True)
 
     def reset(self):
         # ---- start sets of points ---- #
@@ -1788,7 +1867,6 @@ class MainW(QMainWindow):
         self.SCheckBox.setEnabled(False)
         self.restore_masks = 0
         self.states = [None for i in range(len(self.default_cmaps))] 
-        
 
         # -- zero out image stack -- #
         self.opacity = 128 # how opaque masks should be
@@ -1809,7 +1887,9 @@ class MainW(QMainWindow):
         self.cellpix = np.zeros((1,self.Ly,self.Lx), np.uint32)
         self.outpix = np.zeros((1,self.Ly,self.Lx), np.uint32)
         self.ismanual = np.zeros(0, 'bool')
+        self.accent = self.palette().brush(QPalette.Highlight).color()
         self.update_plot()
+        self.progress.setValue(0)
         self.orthobtn.setChecked(False)
         self.filename = []
         self.loaded = False
@@ -2029,9 +2109,11 @@ class MainW(QMainWindow):
         #new version allows users to select any color map and save it
         
         # state = self.state[self.view]
+        
         self.hist.gradient.loadPreset(self.cmaps[self.RGBDropDown.currentIndex()])
         self.states[self.view] = self.hist.saveState()
-        self.update_plot()
+        self.set_tick_hover_color()
+        # self.update_plot()
 
     def update_ztext(self):
         zpos = self.currentZ
@@ -2051,6 +2133,12 @@ class MainW(QMainWindow):
             self.hist.hide()
         else:
             self.hist.show()
+            
+        if self.NZ < 2:
+            self.scroll.hide()
+        else:
+            self.scroll.show()
+                
             
         if self.view==0:
             # self.hist.restoreState(self.histmap_img)
@@ -2106,6 +2194,8 @@ class MainW(QMainWindow):
             self.hist.gradient.loadPreset(self.cmaps[self.view]) # select from predefined list
         else:
             self.hist.restoreState(state) #apply chosen color map
+            
+        self.set_hist_colors()
        
         self.scale.setImage(self.radii, autoLevels=False)
         self.scale.setLevels([0.0,255.0])
@@ -2131,9 +2221,7 @@ class MainW(QMainWindow):
         self.show()
 
     def update_roi_count(self):
-        self.roi_count.setText(f'{self.ncells} ROIs')
-        # self.roi_count.setText(f'{100000} ROIs')
-        
+        self.roi_count.setText(f'{self.ncells} ROIs')        
 
     def update_ortho(self):
         if self.NZ>1 and self.orthobtn.isChecked():
@@ -2331,7 +2419,7 @@ class MainW(QMainWindow):
         self.radii[yy,xx,1] = 0
         self.radii[yy,xx,2] = 0
         self.radii[yy,xx,3] = 255
-        self.update_plot()
+        # self.update_plot()
         self.p0.setYRange(0,self.Ly+self.radii_padding)
         self.p0.setXRange(0,self.Lx)
         self.win.show()
@@ -2496,7 +2584,7 @@ class MainW(QMainWindow):
         # self.SizeButton.setEnabled(False)
         save_path = os.path.dirname(self.filename)
         
-        print('GUI_INFO: name of new model: ' + self.training_params['model_name'])
+        print('GUI_INFO: name of new model:' + self.training_params['model_name'])
         self.new_model_path = self.model.train(self.train_data, self.train_labels, 
                                                channels=self.channels, 
                                                save_path=save_path, 
@@ -2677,14 +2765,17 @@ class MainW(QMainWindow):
         self.compute_model(model_name=model_type)
             
     def compute_model(self):
-        self.progress.setValue(0)
+        self.progress.setValue(10)
+        QApplication.processEvents() 
+
         try:
             tic=time.time()
             self.clear_all()
             self.flows = [[],[],[]]
             self.initialize_model()
             logger.info('using model %s'%self.current_model)
-            self.progress.setValue(10)
+            self.progress.setValue(20)
+            QApplication.processEvents() 
             do_3D = False
             if self.NZ > 1:
                 do_3D = True
@@ -2736,6 +2827,7 @@ class MainW(QMainWindow):
                              do_3D,
                              omni)
                 self.runstring.setPlainText(s)
+                self.progress.setValue(30)
                 masks, flows = self.model.eval(data, channels=channels,
                                                mask_threshold=self.cellprob,
                                                flow_threshold=self.threshold,
@@ -2747,9 +2839,8 @@ class MainW(QMainWindow):
                                                do_3D=do_3D, 
                                                progress=self.progress,
                                                verbose=self.verbose.isChecked(),
-                                               omni=omni)[:2]
-                
-
+                                               omni=omni, 
+                                               transparency=True)[:2]
                 
             except Exception as e:
                 print('NET ERROR: %s'%e)
@@ -2757,6 +2848,7 @@ class MainW(QMainWindow):
                 return
 
             self.progress.setValue(75)
+            QApplication.processEvents() 
             #if not do_3D:
             #    masks = masks[0][np.newaxis,:,:]
             #    flows = flows[0]
@@ -2766,9 +2858,7 @@ class MainW(QMainWindow):
             self.flows[0] = (normalize99(flows[0].copy()) * 255).astype(np.uint8) #RGB flow for plotting
             self.flows[1] = (normalize99(flows[2].copy()) * 255).astype(np.uint8) #dist/prob for plotting
             self.flows[2] = (normalize99(flows[4].copy()) * 255).astype(np.uint8) #boundary for plotting
-            
-            print('TTTTT',np.ptp(flows[4]),flows[4].shape)
-                
+                            
             if not do_3D:
                 masks = masks[np.newaxis,...]
                 for i in range(3):
@@ -2794,6 +2884,7 @@ class MainW(QMainWindow):
 
             logger.info('%d cells found with model in %0.3f sec'%(len(np.unique(masks)[1:]), time.time()-tic))
             self.progress.setValue(80)
+            QApplication.processEvents() 
             z=0
             self.masksOn = True
             self.MCheckBox.setChecked(True)
