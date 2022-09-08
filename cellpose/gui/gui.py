@@ -28,6 +28,7 @@ INPUT_WIDTH = 2*WIDTH_0 + SPACING
 WIDTH_3 = 3*WIDTH_0+2*SPACING
 WIDTH_5 = 5*WIDTH_0+4*SPACING
 
+import darkdetect
 import qdarktheme
 import superqt
 
@@ -163,11 +164,7 @@ def interpZ(mask, zdraw):
         #Mu, normu = avg3d(mask[zupper[k]], 1-zl)
         #mask[z] = (Ml + Mu) / (norml + normu)  > 0.5
     return mask, zfill
-        
-
-    
-import darkdetect
-    
+            
 global logger
 def run(image=PRELOAD_IMAGE):
     signal.signal(signal.SIGINT, signal.SIG_DFL)

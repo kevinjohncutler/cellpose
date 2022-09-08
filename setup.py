@@ -14,7 +14,7 @@ gui_deps = [
         'PyQt6.sip',
         'google-cloud-storage',
         'pyqtdarktheme@git+https://github.com/kevinjohncutler/pyqtdarktheme#egg=pyqtdarktheme',
-        'superqt','colour'
+        'superqt','colour','darkdetect'
         ]
 
 docs_deps = [
