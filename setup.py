@@ -51,14 +51,14 @@ with open("README.md", "r") as fh:
     
     
 setup(
-    name="cellpose-for-omnipose",
+    name="cellpose",
     license="BSD",
     author="Kevin Cutler",
     author_email="kevinjohncutler@outlook.com",
     description="cellpose fork developed for omnipose",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/MouseLand/cellpose",
+    url="https://github.com/kevinjohncutler/cellpose",
     setup_requires=[
       'pytest-runner',
       'setuptools_scm',
