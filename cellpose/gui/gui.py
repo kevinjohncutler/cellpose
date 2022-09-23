@@ -2662,9 +2662,11 @@ class MainW(QMainWindow):
         
         # needed to be replaced with recompute_masks
         rerun = False
+        more_px = self.probslider.value() < self.cellprob # slider moves down
         if self.cellprob != self.probslider.value():
             rerun = True
             self.cellprob = self.probslider.value()
+            
         if self.threshold != self.threshslider.value():
             rerun = True
             self.threshold = self.threshslider.value()
@@ -2702,24 +2704,31 @@ class MainW(QMainWindow):
         if not omni:
             maski = dynamics.compute_masks(dP=self.flows[-1][:-1], 
                                            cellprob=self.flows[-1][-1],
-                                           p=self.flows[-2].copy(),  #I think p can be too messed up from initial cellprob, need to recompute
+                                           p=self.flows[-2].copy(),  
                                            mask_threshold=self.cellprob,
                                            flow_threshold=thresh,
                                            resize=self.cellpix.shape[-2:],
                                            verbose=self.verbose.isChecked())[0]
         else:
             #self.flows[3] is p, self.flows[-1] is dP, self.flows[5] is dist/prob, self.flows[6] is bd
-
-            p = self.flows[-2].copy()
+            
+            # must recompute flows if we add pixels, because p does not contain them
+            # an alternate approach would be to compute p for the lowest allowed threshold
+            # and then never ecompute (the threshold prodces a mask that selects from existing trajectories, see get_masks)
+            p = self.flows[-2].copy() if more_px else None 
+            
             dP = self.flows[-1][:-self.model.dim]
             dist = self.flows[-1][self.model.dim]
             bd = self.flows[-1][self.model.dim+1]
             # print('flow debug',self.model.dim,p.shape,dP.shape,dist.shape,bd.shape)
-            maski = omnipose.core.compute_masks(dP, dist, bd, p,
+            maski = omnipose.core.compute_masks(dP, dist, bd, 
+                                                p, 
                                                 mask_threshold=self.cellprob,
                                                 flow_threshold=thresh,
                                                 resize=self.cellpix.shape[-2:],
-                                                cluster=self.cluster.isChecked(), 
+                                                cluster=self.cluster.isChecked(),
+                                                verbose=self.verbose.isChecked(),
+                                                nclasses=self.model.nclasses,
                                                 omni=omni)[0]
 
         
@@ -2837,6 +2846,7 @@ class MainW(QMainWindow):
                                                progress=self.progress,
                                                verbose=self.verbose.isChecked(),
                                                omni=omni, 
+                                               cluster = self.cluster.isChecked(),
                                                transparency=True)[:2]
                 
             except Exception as e:

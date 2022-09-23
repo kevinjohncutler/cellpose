@@ -13,7 +13,7 @@ gui_deps = [
         'PyQt6', 
         'PyQt6.sip',
         'google-cloud-storage',
-        'pyqtdarktheme@git+https://github.com/kevinjohncutler/pyqtdarktheme#egg=pyqtdarktheme',
+        'PyQtDarkTheme@git+https://github.com/kevinjohncutler/omnipose-theme#egg=PyQtDarkTheme',
         'superqt','colour','darkdetect'
         ]
 
@@ -28,7 +28,8 @@ omni_deps = [
         'scikit-learn',
         'edt',
         'torch_optimizer', 
-        'ncolor'
+        # 'ncolor' needs updating, just use git for now unless I make all the rest PyPi
+        'ncolor@git+https://github.com/kevinjohncutler/ncolor#egg=ncolor'
         ]
 
 distributed_deps = [

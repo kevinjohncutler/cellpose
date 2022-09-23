@@ -88,12 +88,15 @@ def main(omni_CLI=False):
     algorithm_args.add_argument('--omni', action='store_true', help='Omnipose algorithm (disabled by default)')
     algorithm_args.add_argument('--cluster', action='store_true', help='DBSCAN clustering. Reduces oversegmentation of thin features (disabled by default).')
     algorithm_args.add_argument('--fast_mode', action='store_true', help='make code run faster by turning off 4 network averaging and resampling')
-    algorithm_args.add_argument('--no_resample', action='store_true', help="disable dynamics on full image (makes algorithm faster for images with large diameters)")
+    algorithm_args.add_argument('--no_resample', action='store_true', 
+                                help="disable dynamics on full image (makes algorithm faster for images with large diameters)")
     algorithm_args.add_argument('--no_net_avg', action='store_true', help='make code run faster by only running 1 network')
     algorithm_args.add_argument('--no_interp', action='store_true', help='do not interpolate when running dynamics (was default)')
     algorithm_args.add_argument('--do_3D', action='store_true', help='process images as 3D stacks of images (nplanes x nchan x Ly x Lx')
     algorithm_args.add_argument('--diameter', required=False, default=30., type=float, 
                                 help='cell diameter, if 0 cellpose will estimate for each image')
+    algorithm_args.add_argument('--rescale', required=False, default=None, type=float, 
+                                help='image rescaling factor (r = diameter / model diameter)')
     algorithm_args.add_argument('--stitch_threshold', required=False, default=0.0, type=float, help='compute masks in 2D then stitch together masks with IoU>0.9 across planes')
     algorithm_args.add_argument('--flow_threshold', default=0.4, type=float, help='flow error threshold, 0 turns off this optional QC step. Default: %(default)s')
     algorithm_args.add_argument('--mask_threshold', default=0, type=float, help='mask threshold, default is 0, decrease to find more and larger masks')
@@ -336,7 +339,7 @@ def main(omni_CLI=False):
             
             for image_name in tqdm(image_names, file=tqdm_out):
                 image = io.imread(image_name)
-                out = model.eval(image, channels=channels, diameter=diameter,
+                out = model.eval(image, channels=channels, diameter=diameter, rescale = args.rescale,
                                 do_3D=args.do_3D, net_avg=(not args.fast_mode and not args.no_net_avg),
                                 augment=False,
                                 resample=(not args.no_resample and not args.fast_mode),

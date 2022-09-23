@@ -150,6 +150,7 @@ class UnetModel():
         self.checkpoint = checkpoint
         self.dropout = dropout
         self.kernel_size = kernel_size
+        # print('torch is ffff', torch) # duplicated in unetmodel class
         
         if self.torch:
             self.nbase = [nchan, 32, 64, 128, 256]
@@ -461,7 +462,8 @@ class UnetModel():
             1D array summarizing the style of the image,
             if tiled it is averaged over tiles
 
-        """  
+        """
+
         transpose = False
         if imgs.ndim==4 and self.dim==2: #doing cellpose 3D, model does 2D slices but image is 3D+chans  
             # make image Lz x nchan x Ly x Lx for net
@@ -496,6 +498,7 @@ class UnetModel():
                                       tile_overlap=tile_overlap, 
                                       return_conv=return_conv)
         else:
+
             imgs = np.expand_dims(imgs, axis=0)
             y, style = self.network(imgs, return_conv=return_conv)
             y, style = y[0], style[0]

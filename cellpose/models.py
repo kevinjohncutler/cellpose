@@ -124,7 +124,7 @@ class Cellpose():
                                 diam_mean=self.diam_mean, torch=self.torch, 
                                 dim=self.dim, omni=self.omni)
         self.cp.model_type = model_type
-        
+
         # size model not used for bacterial model
         if not bacterial:
             self.pretrained_size = size_model_path(model_type, torch)
@@ -379,6 +379,7 @@ class CellposeModel(UnetModel):
             if not MXNET_ENABLED:
                 torch = True
         self.torch = torch
+        # print('torch is', torch) # duplicated in unetmodel claass
         if isinstance(pretrained_model, np.ndarray):
             pretrained_model = list(pretrained_model)
         elif isinstance(pretrained_model, str):
@@ -438,6 +439,8 @@ class CellposeModel(UnetModel):
             self.nclasses = self.dim + 2          
 
         # initialize network
+        
+
         super().__init__(gpu=gpu, pretrained_model=False,
                          diam_mean=self.diam_mean, net_avg=net_avg, device=device,
                          residual_on=residual_on, style_on=style_on, concatenation=concatenation,
@@ -448,23 +451,32 @@ class CellposeModel(UnetModel):
 
         self.unet = False
         self.pretrained_model = pretrained_model
+
         if self.pretrained_model and len(self.pretrained_model)==1:
+
             
             # # dataparallel
             # if self.torch and self.gpu:
             #     net = self.net.module
             # else:
             #     net = self.net
-            
+            # if self.torch and gpu:
+            #     self.net = nn.DataParallel(self.net)
+
             self.net.load_model(self.pretrained_model[0], cpu=(not self.gpu))
+
+            
             if not self.torch:
                 self.net.collect_params().grad_req = 'null'
+
+                
         ostr = ['off', 'on']
         omnistr = ['','_omni'] #toggle by containing omni phrase 
         self.net_type = 'cellpose_residual_{}_style_{}_concatenation_{}{}'.format(ostr[residual_on],
                                                                                    ostr[style_on],
                                                                                    ostr[concatenation],
                                                                                    omnistr[omni]) 
+
         
         if self.torch and gpu:
             self.net = nn.DataParallel(self.net)
@@ -612,13 +624,13 @@ class CellposeModel(UnetModel):
         
         if cellprob_threshold is not None or dist_threshold is not None:
             mask_threshold = deprecation_warning_cellprob_dist_threshold(cellprob_threshold, dist_threshold)
-        
+
         if verbose:
             models_logger.info('Evaluating with flow_threshold %0.2f, mask_threshold %0.2f'%(flow_threshold, mask_threshold))
             if omni:
                 models_logger.info(f'using omni model, cluster {cluster}')
         
-        
+
         if isinstance(x, list) or x.squeeze().ndim==5:
             masks, styles, flows = [], [], []
             tqdm_out = utils.TqdmToLogger(models_logger, level=logging.INFO)
@@ -666,13 +678,16 @@ class CellposeModel(UnetModel):
         
         else:
             if not model_loaded and (isinstance(self.pretrained_model, list) and not net_avg and not loop_run):
-                
+
                 # whether or not we are using dataparallel 
                 if self.torch and self.gpu:
+                    # print('using dataparallel')
                     net = self.net.module
                 else:
                     net = self.net
+                    # print('not using dataparallel')
                     
+                
                 net.load_model(self.pretrained_model[0], cpu=(not self.gpu))
                 if not self.torch:
                     net.collect_params().grad_req = 'null'

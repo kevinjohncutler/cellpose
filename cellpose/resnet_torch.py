@@ -265,8 +265,8 @@ class CPnet(nn.Module):
     def save_model(self, filename):
         torch.save(self.state_dict(), filename)
 
-    def load_model(self, filename, cpu=False):
         
+    def load_model(self, filename, cpu=False):
         if not cpu:
             self.load_state_dict(torch.load(filename))
         else:
@@ -281,4 +281,20 @@ class CPnet(nn.Module):
                           self.checkpoint,
                           self.do_dropout,
                           self.kernel_size)
-            self.load_state_dict(torch.load(filename, map_location=torch.device('cpu')))
+            state_dict = torch.load(filename, map_location=torch.device('cpu'))
+            # print('ggg',state_dict)
+            try:
+#                 from collections import OrderedDict
+#                 new_state_dict = OrderedDict()
+
+#                 for k, v in state_dict.items():
+#                     if 'module' not in k:
+#                         k = 'module.'+k
+#                     else:
+#                         k = k.replace('features.module.', 'module.features.')
+#                     new_state_dict[k]=v
+
+#                 self.load_state_dict(new_state_dict, strict=False)
+                self.load_state_dict(state_dict, strict=False)
+            except Exception as e:
+                print('failed to load model', e)
