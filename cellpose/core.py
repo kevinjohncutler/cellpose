@@ -8,6 +8,10 @@ import cv2
 from scipy.stats import mode
 from . import transforms, dynamics, utils, metrics, io
 
+
+from focal_loss.focal_loss import FocalLoss
+
+
 try:
     from mxnet import gluon, nd
     import mxnet as mx
@@ -25,7 +29,7 @@ try:
     from torch.utils import mkldnn as mkldnn_utils
     from . import resnet_torch
     TORCH_ENABLED = True
-    torch_GPU = torch.device('cuda')
+    torch_GPU = torch.device('mps') if torch.backends.mps.is_available() else torch.device('cuda')
     torch_CPU = torch.device('cpu')
 except Exception as e:
     TORCH_ENABLED = False
@@ -71,8 +75,9 @@ def _use_gpu_torch(gpu_number=0):
 
 def assign_device(use_torch=True, gpu=False, device=0):
     if gpu and use_gpu(use_torch=True):
-        device = torch.device(f'cuda:{device}')
-        gpu=True
+        # device = torch.device(f'cuda:{device}')
+        device = torch.device(f'mps:{device}') if torch.backends.mps.is_available() else torch.device(f'cuda:{device}')
+        gpu = True
         core_logger.info('>>>> using GPU')
     else:
         device = torch.device('cpu')
@@ -855,7 +860,7 @@ class UnetModel():
     def _set_criterion(self):
         if self.unet:
             if self.torch:
-                criterion = nn.SoftmaxCrossEntropyLoss(axis=1)
+                criterion = nn.SoftmaxCrossEntropyLoss(axis=1) # not working anymore?
             else:
                 criterion = gluon.loss.SoftmaxCrossEntropyLoss(axis=1)
         else:
@@ -868,6 +873,9 @@ class UnetModel():
                 self.criterion14 = ArcCosDotLoss()
                 self.criterion15 = NormLoss()
                 self.criterion16 = DivergenceLoss()
+                # self.criterion17 = nn.SoftmaxCrossEntropyLoss(axis=1)
+                self.criterion17 = FocalLoss()
+                
             else:
                 self.criterion  = gluon.loss.L2Loss()
                 self.criterion2 = gluon.loss.SigmoidBinaryCrossEntropyLoss()
@@ -910,16 +918,18 @@ class UnetModel():
         self._set_criterion()
         
         nimg = len(train_data)
-
+        
+        # debug
+        # for k in range(len(train_labels)):
+        #     print('ggg',train_labels[k][0].shape, np.unique(train_labels[k][0]))
+        
         # compute average cell diameter
         if rescale:
-            for k in range(len(train_labels)):
-                print('ggg',train_labels[k][0].shape,np.unique(train_labels[k][0]))
-            diam_train = np.array([utils.diameters(train_labels[k][0],omni=self.omni)[0] 
+            diam_train = np.array([utils.diameters(train_labels[k],omni=self.omni)[0] 
                                    for k in range(len(train_labels))])
             diam_train[diam_train<5] = 5.
             if test_data is not None:
-                diam_test = np.array([utils.diameters(test_labels[k][0],omni=self.omni)[0] 
+                diam_test = np.array([utils.diameters(test_labels[k],omni=self.omni)[0] 
                                       for k in range(len(test_labels))])
                 diam_test[diam_test<5] = 5.
             scale_range = 0.5
@@ -981,8 +991,8 @@ class UnetModel():
                 # now passing in the full train array, need the labels for distance field
                 imgi, lbl, scale = transforms.random_rotate_and_resize(
                                         [train_data[i] for i in inds], Y=[train_labels[i] for i in inds],
-                                        rescale=rsc, scale_range=scale_range, unet=self.unet, tyx=tyx,
-                                        inds=inds, omni=self.omni, dim=self.dim, nchan=self.nchan)
+                                        rescale=rsc, scale_range=scale_range, unet=self.unet, tyx=tyx, inds=inds,
+                                        omni=self.omni, dim=self.dim, nchan=self.nchan, nclasses=self.nclasses)
                 if self.unet and lbl.shape[1]>1 and rescale:
                     lbl[:,1] /= diam_batch[:,np.newaxis,np.newaxis]**2
                 train_loss = self._train_step(imgi, lbl)
@@ -1001,7 +1011,7 @@ class UnetModel():
                         imgi, lbl, scale = transforms.random_rotate_and_resize(
                                             [test_data[i] for i in inds], Y=[test_labels[i] for i in inds], 
                                             scale_range=0., rescale=rsc, unet=self.unet, tyx=tyx, inds=inds, 
-                                            omni=self.omni, dim=self.dim) 
+                                            omni=self.omni, dim=self.dim, nchan=self.nchan, nclasses=self.nclasses) 
                         if self.unet and lbl.shape[1]>1 and rescale:
                             lbl[:,1] *= scale[0]**2
 

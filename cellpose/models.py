@@ -331,9 +331,10 @@ class Cellpose():
 
     
 # there is a bunch of repetiton in cellpose(), cellposemodel(), __main__ with nuclear, bacterial checks
-# I need to figure out a way to fcotr all that out, probably by making a function in models and calling it
+# I need to figure out a way to facotr all that out, probably by making a function in models and calling it
 # in all three contexts. Also I should just check for model existence for the 4-model averaging instead of 
 # requiring it for models based on name. 
+# I want to make a 1-class model (cellprob only). nclasses=1 is already an option, but much of the code requires 3+ classes. 
 class CellposeModel(UnetModel):
     """
 
@@ -435,8 +436,8 @@ class CellposeModel(UnetModel):
         # Omni models have 4D output for 2D images, 5D for 3D images, etc. (flow compinents increase with dimension)
         # Note that omni can still be used independently for evaluation to 'mix and match'
         #would be better just to read from the model 
-        if self.omni:
-            self.nclasses = self.dim + 2          
+        # if self.omni:
+        #     self.nclasses = self.dim + 2          
 
         # initialize network
         
@@ -487,7 +488,7 @@ class CellposeModel(UnetModel):
             # self.net = nn.parallel.DistributedDataParallel(self.net)
             
             
-    
+    # eval contains most of the tricky code handling all the cases for nclasses 
     def eval(self, x, batch_size=8, channels=None, channel_axis=None, 
              z_axis=None, normalize=True, invert=False, 
              rescale=None, diameter=None, do_3D=False, anisotropy=None, net_avg=True, 
@@ -587,7 +588,7 @@ class CellposeModel(UnetModel):
                 to return progress bar status to GUI
                 
             omni: bool (optional, default False)
-                use omnipose mask recontruction features
+                use omnipose mask reconstruction features
             
             calc_trace: bool (optional, default False)
                 calculate pixel traces and return as part of the flow
@@ -701,7 +702,7 @@ class CellposeModel(UnetModel):
             self.batch_size = batch_size
             rescale = self.diam_mean / diameter if (rescale is None and (diameter is not None and diameter>0)) else rescale
             rescale = 1.0 if rescale is None else rescale
-            
+
             masks, styles, dP, cellprob, p, bd, tr = self._run_cp(x, 
                                                           compute_masks=compute_masks,
                                                           normalize=normalize,
@@ -725,7 +726,8 @@ class CellposeModel(UnetModel):
                                                           omni=omni,
                                                           calc_trace=calc_trace,
                                                           verbose=verbose)
-            flows = [plot.dx_to_circ(dP,transparency=transparency), dP, cellprob, p, bd, tr]
+            flows = [plot.dx_to_circ(dP,transparency=transparency) if self.nclasses>1 else np.zeros(cellprob.shape+(3,),np.uint8),
+                     dP, cellprob, p, bd, tr]
             return masks, flows, styles
 
     def _run_cp(self, x, compute_masks=True, normalize=True, invert=False,
@@ -738,7 +740,6 @@ class CellposeModel(UnetModel):
         tic = time.time()
         shape = x.shape
         nimg = shape[0] 
-        
         bd, tr = None, None
         if do_3D:
             img = np.asarray(x)
@@ -784,25 +785,32 @@ class CellposeModel(UnetModel):
                         img = np.stack([zoom(img[...,k],rescale,order=3) for k in range(img.shape[-1])],axis=-1)
                     else:
                         img = zoom(img,rescale,order=1)
+                        
                 yf, style = self._run_nets(img, net_avg=net_avg,
                                            augment=augment, tile=tile,
                                            tile_overlap=tile_overlap)
-                
+
                 # resample interpolates the network output to native resolution prior to running Euler integration
                 # this means the masks will have no scaling artifacts. We could *upsample* by some factor to make
                 # the clustering etc. work even better, but that is not implemented yet 
                 if resample:
                     # ND version actually gives better results than CV2 in some places. 
                     yf = np.stack([zoom(yf[...,k], shape[1:1+self.dim]/np.array(yf.shape[:2]), order=1) for k in range(yf.shape[-1])],axis=-1)
-                    
                     # scipy.ndimage.affine_transform(A, np.linalg.inv(M), output_shape=tyx,
-                cellprob[i] = yf[...,self.dim] #scalar field always after the vector field output 
-                order = (self.dim,)+tuple([k for k in range(self.dim)]) #(2,0,1)
-                dP[:, i] = yf[...,:self.dim].transpose(order) 
-                if self.nclasses >= 4:
+                
+                if self.nclasses>1:
+                    cellprob[i] = yf[...,self.dim] #scalar field always after the vector field output 
+                    order = (self.dim,)+tuple([k for k in range(self.dim)]) #(2,0,1)
+                    dP[:, i] = yf[...,:self.dim].transpose(order) 
+                else:
+                    cellprob[i] = yf[...,0]
+                    # dP[i] =  np.zeros(cellprob)
+                    
+                if self.nclasses>=4:
                     if i==0:
                         bd = np.zeros_like(cellprob)
                     bd[i] = yf[...,self.dim+1]
+                    
                 styles[i] = style
             del yf, style
         styles = styles.squeeze()
@@ -813,11 +821,11 @@ class CellposeModel(UnetModel):
             models_logger.info('network run in %2.2fs'%(net_time))
 
         if compute_masks:
-            tic=time.time()
+            tic = time.time()
             niter = 200 if (do_3D and not resample) else (1 / rescale * 200)
             if do_3D:
                 if not (omni and OMNI_INSTALLED):
-                    # run cellpose compute_masks
+                    # run cellpose compute_masks                   
                     masks, p, tr = dynamics.compute_masks(dP, cellprob, bd, niter=niter, resize=None, 
                                                           mask_threshold=mask_threshold,
                                                           diam_threshold=diam_threshold, 
@@ -902,14 +910,14 @@ class CellposeModel(UnetModel):
             masks, dP, cellprob, p = masks.squeeze(), dP.squeeze(), cellprob.squeeze(), p.squeeze()
             bd = bd.squeeze() if bd is not None else bd
         else:
-            masks, p , tr = np.zeros(0), np.zeros(0), np.zeros(0) #pass back zeros if not compute_masks
+            masks, p , tr = np.zeros(0), np.zeros(0), np.zeros(0) #pass back zeros if not compute_masks            
+            
         return masks, styles, dP, cellprob, p, bd, tr
 
         
     def loss_fn(self, lbl, y):
         """ loss function between true labels lbl and prediction y """
-        if self.omni and OMNI_INSTALLED:
-             #loss function for omnipose field 
+        if self.omni and OMNI_INSTALLED: #loss function for omnipose fields
             loss = omnipose.core.loss(self, lbl, y)
         else: # original loss function 
             veci = 5. * self._to_device(lbl[:,1:])
@@ -919,7 +927,7 @@ class CellposeModel(UnetModel):
                 loss /= 2.
             loss2 = self.criterion2(y[:,2] , lbl)
             loss = loss + loss2
-        return loss        
+        return loss
 
 
     def train(self, train_data, train_labels, train_files=None, 

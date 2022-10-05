@@ -208,6 +208,7 @@ class CPnet(nn.Module):
                  style_on=True, concatenation=False, mkldnn=False, dim=2, 
                  checkpoint=False, dropout=False, kernel_size=2):
         super(CPnet, self).__init__()
+        
         self.checkpoint = checkpoint # master switch 
         self.kernel_size = kernel_size # for maxpool
         self.nbase = nbase

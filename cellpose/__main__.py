@@ -57,29 +57,29 @@ def main(omni_CLI=False):
     # settings for locating and formatting images
     input_img_args = parser.add_argument_group("input image arguments")
     input_img_args.add_argument('--dir',
-                        default=[], type=str, help='folder containing data to run or train on.')
+                                default=[], 
+                                type=str, help='folder containing data to run or train on.')
     input_img_args.add_argument('--look_one_level_down', action='store_true', help='run processing on all subdirectories of current folder')
     input_img_args.add_argument('--mxnet', action='store_true', help='use mxnet')
-    input_img_args.add_argument('--img_filter',
-                        default=[], type=str, help='end string for images to run on')
-    input_img_args.add_argument('--channel_axis',
-                        default=None, type=int, help='axis of image which corresponds to image channels')
-    input_img_args.add_argument('--z_axis',
-                        default=None, type=int, help='axis of image which corresponds to Z dimension')
-    input_img_args.add_argument('--chan',
-                        default=0, type=int, help='channel to segment; 0: GRAY, 1: RED, 2: GREEN, 3: BLUE. Default: %(default)s')
-    input_img_args.add_argument('--chan2',
-                        default=0, type=int, help='nuclear channel (if cyto, optional); 0: NONE, 1: RED, 2: GREEN, 3: BLUE. Default: %(default)s')
+    input_img_args.add_argument('--img_filter',default=[], type=str, help='end string for images to run on')
+    input_img_args.add_argument('--channel_axis', default=None, type=int, 
+                                help='axis of image which corresponds to image channels')
+    input_img_args.add_argument('--z_axis', default=None, type=int, 
+                                help='axis of image which corresponds to Z dimension')
+    input_img_args.add_argument('--chan', default=0, type=int, 
+                                help='channel to segment; 0: GRAY, 1: RED, 2: GREEN, 3: BLUE. Default: %(default)s')
+    input_img_args.add_argument('--chan2', default=0, type=int, 
+                                help='nuclear channel (if cyto, optional); 0: NONE, 1: RED, 2: GREEN, 3: BLUE. Default: %(default)s')
     input_img_args.add_argument('--invert', action='store_true', help='invert grayscale channel')
     input_img_args.add_argument('--all_channels', action='store_true', help='use all channels in image if using own model and images with special channels')
-    input_img_args.add_argument('--dim',
-                                default=2, type=int, help='number of spatiotemporal dimensions of images (not counting channels). Default: %(default)s') ##
+    input_img_args.add_argument('--dim', default=2, type=int, 
+                                help='number of spatiotemporal dimensions of images (not counting channels). Default: %(default)s') ##
     
     # model settings 
     model_args = parser.add_argument_group("model arguments")
     model_args.add_argument('--pretrained_model', required=False, default='cyto', type=str, help='model to use')
     model_args.add_argument('--unet', required=False, default=0, type=int, help='run standard unet instead of cellpose flow output')
-    model_args.add_argument('--nclasses',default=3, type=int, help='if running unet, choose 2 or 3; if training omni, choose 4; standard Cellpose uses 3')
+    model_args.add_argument('--nclasses',default=None, type=int, help='if running unet, choose 2 or 3; if training omni, choose 4; standard Cellpose uses 3')
     model_args.add_argument('--kernel_size',default=2, type=int, help='kernel size for maskpool. Starts at 2, higher means more aggressive downsampling.')
 
 
@@ -262,7 +262,10 @@ def main(omni_CLI=False):
         # omni model needs 4 classes, but all the training regenerates this from scratch and just ignores saved CP flows. 
         if args.omni and args.train:
             logger.info('Training omni model. Setting nclasses=4, RAdam=True')
-            args.nclasses = 4
+            
+            # assume instance segmentation unless otherwise specified 
+            if args.nclasses is None:
+                args.nclasses= 4
             # args.dropout = True
             args.RAdam = True
 

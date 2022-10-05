@@ -675,7 +675,7 @@ def reshape_and_normalize_data(train_data, test_data=None, channels=None, channe
                 data[i] = normalize_img(data[i], axis=0, omni=omni)
         nchan = [data[i].shape[0] for i in range(nimg)]
     run_test = True
-    # print('reshape_and_normalize_data_2',nimg,channels,data[0].shape,train_data[0].shape) why won't this print 
+    print('reshape_and_normalize_data_2',nimg,channels,data[0].shape,train_data[0].shape)
     return train_data, test_data, run_test
 
 def resize_image(img0, Ly=None, Lx=None, rsz=None, interpolation=cv2.INTER_LINEAR, no_channels=False):
@@ -776,7 +776,7 @@ def pad_image_ND(img0, div=16, extra=1, dim=2):
 
 def random_rotate_and_resize(X, Y=None, scale_range=1., gamma_range=0.5, tyx=None, 
                              do_flip=True, rescale=None, unet=False,
-                             inds=None, omni=False, dim=2, nchan=1, kernel_size=2):
+                             inds=None, omni=False, dim=2, nchan=1, nclasses=3, kernel_size=2):
     """ augmentation by random rotation and resizing
 
         X and Y are lists or arrays of length nimg, with dims channels x Ly x Lx (channels optional)
@@ -837,7 +837,8 @@ def random_rotate_and_resize(X, Y=None, scale_range=1., gamma_range=0.5, tyx=Non
         if tyx is None:
             tyx = (L,)*dim if dim==2 else (8*n,)+(8*n,)*(dim-1) #must be divisible by 2**3 = 8
         return omnipose.core.random_rotate_and_resize(X, Y=Y, scale_range=scale_range, gamma_range=gamma_range,
-                                                      tyx=tyx, do_flip=do_flip, rescale=rescale, inds=inds, nchan=nchan)
+                                                      tyx=tyx, do_flip=do_flip, rescale=rescale, inds=inds, 
+                                                      nchan=nchan, nclasses=nclasses)
     else:
         # backwards compatibility; completely 'stock', no gamma augmentation or any other extra frills. 
         # [Y[i][1:] for i in inds] is necessary because the original transform function does not use masks (entry 0). 
