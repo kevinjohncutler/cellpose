@@ -9,7 +9,7 @@ from scipy.stats import mode
 from . import transforms, dynamics, utils, metrics, io
 
 
-from focal_loss.focal_loss import FocalLoss
+# from focal_loss.focal_loss import FocalLoss
 
 
 try:
@@ -874,7 +874,7 @@ class UnetModel():
                 self.criterion15 = NormLoss()
                 self.criterion16 = DivergenceLoss()
                 # self.criterion17 = nn.SoftmaxCrossEntropyLoss(axis=1)
-                self.criterion17 = FocalLoss()
+                # self.criterion17 = FocalLoss()
                 
             else:
                 self.criterion  = gluon.loss.L2Loss()

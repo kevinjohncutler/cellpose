@@ -38,6 +38,9 @@ distributed_deps = [
         'scikit-learn',
         ]
 
+# conda install numba numpy tifffile imagecodecs scipy fastremap pyqtgraph
+#  pip install opencv-python==4.5.3.56 
+
 try:
     import torch
     a = torch.ones(2, 3)
