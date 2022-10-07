@@ -54,6 +54,7 @@ def parse_model_string(pretrained_model):
     residual_on = ostrs[0]=='on'
     style_on = ostrs[1]=='on'
     concatenation = ostrs[2]=='on'
+    print('hlhhlhlhlh',nclasses)
     return residual_on, style_on, concatenation
 
 def use_gpu(gpu_number=0, use_torch=True):
@@ -157,6 +158,7 @@ class UnetModel():
         self.kernel_size = kernel_size
         # print('torch is ffff', torch) # duplicated in unetmodel class
         
+        print('yoyoyoyoy',self.nclasses)
         if self.torch:
             self.nbase = [nchan, 32, 64, 128, 256]
             self.net = resnet_torch.CPnet(self.nbase, 

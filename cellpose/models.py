@@ -388,6 +388,7 @@ class CellposeModel(UnetModel):
     
         # initialize according to arguments 
         # these are overwritten if a model requires it (bact_omni the most rectrictive)
+        print('tytytytyt',nclasses)
         self.omni = omni
         self.nclasses = nclasses 
         self.diam_mean = diam_mean
@@ -436,8 +437,8 @@ class CellposeModel(UnetModel):
         # Omni models have 4D output for 2D images, 5D for 3D images, etc. (flow compinents increase with dimension)
         # Note that omni can still be used independently for evaluation to 'mix and match'
         #would be better just to read from the model 
-        # if self.omni:
-        #     self.nclasses = self.dim + 2          
+        if self.omni and nclasses !=1:
+            self.nclasses = self.dim + 2          
 
         # initialize network
         
@@ -473,10 +474,10 @@ class CellposeModel(UnetModel):
                 
         ostr = ['off', 'on']
         omnistr = ['','_omni'] #toggle by containing omni phrase 
-        self.net_type = 'cellpose_residual_{}_style_{}_concatenation_{}{}'.format(ostr[residual_on],
+        self.net_type = 'cellpose_residual_{}_style_{}_concatenation_{}{}_nclasses_{}'.format(ostr[residual_on],
                                                                                    ostr[style_on],
                                                                                    ostr[concatenation],
-                                                                                   omnistr[omni]) 
+                                                                                   omnistr[omni],self.nclasses) 
 
         
         if self.torch and gpu:
