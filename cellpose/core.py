@@ -161,7 +161,6 @@ class UnetModel():
         self.kernel_size = kernel_size
         # print('torch is ffff', torch) # duplicated in unetmodel class
         
-        print('yoyoyoyoy',self.nclasses)
         if self.torch:
             self.nbase = [nchan, 32, 64, 128, 256]
             self.net = resnet_torch.CPnet(self.nbase, 
