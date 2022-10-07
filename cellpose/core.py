@@ -33,7 +33,7 @@ try:
     torch_CPU = torch.device('cpu')
 except Exception as e:
     TORCH_ENABLED = False
-    print(e)
+    print('core.py torch import error',e)
 
 core_logger = logging.getLogger(__name__)
 tqdm_out = utils.TqdmToLogger(core_logger, level=logging.INFO)
@@ -66,12 +66,13 @@ def use_gpu(gpu_number=0, use_torch=True):
 
 def _use_gpu_torch(gpu_number=0):
     try:
-        device = torch.device('cuda:' + str(gpu_number))
+        # device = torch.device('cuda:' + str(gpu_number))
+        device = torch.device(f'mps:{gpu_number}') if torch.backends.mps.is_available() else torch.device(f'cuda:{gpu_number}')
         _ = torch.zeros([1, 2, 3]).to(device)
         core_logger.info('** TORCH CUDA version installed and working. **')
         return True
-    except:
-        core_logger.info('TORCH CUDA version not installed/working.')
+    except Exception as e:
+        core_logger.info('TORCH CUDA version not installed/working.', e)
         return False
 
 def assign_device(use_torch=True, gpu=False, device=0):
@@ -127,7 +128,9 @@ class UnetModel():
         self.device = device if device is not None else sdevice
         if device is not None:
             if torch:
-                device_gpu = self.device.type=='cuda'
+                # device_gpu = self.device.type=='cuda'
+                device_gpu = self.device.type=='mps' if torch.backends.mps.is_available() else self.device.type=='cuda'
+                
             else:
                 device_gpu = self.device.device_type=='gpu'
         self.gpu = gpu if device is None else device_gpu

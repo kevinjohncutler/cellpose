@@ -16,15 +16,25 @@ from .io import OMNI_INSTALLED
 if OMNI_INSTALLED:
     from omnipose.core import step_factor 
 
+# try:
+#     import torch
+#     from torch import optim, nn
+#     from . import resnet_torch
+#     TORCH_ENABLED = True 
+#     torch_GPU = torch.device('cuda')
+#     torch_CPU = torch.device('cpu')
+# except:
+#     TORCH_ENABLED = False
 try:
     import torch
-    from torch import optim, nn
+    from torch import nn
     from . import resnet_torch
-    TORCH_ENABLED = True 
-    torch_GPU = torch.device('cuda')
+    TORCH_ENABLED = True
+    torch_GPU = torch.device('mps') if torch.backends.mps.is_available() else torch.device('cuda')
     torch_CPU = torch.device('cpu')
-except:
+except Exception as e:
     TORCH_ENABLED = False
+    print('dynamics.py torch import error',e)
 
 try:
     from skimage import filters

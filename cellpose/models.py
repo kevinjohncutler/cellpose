@@ -388,7 +388,6 @@ class CellposeModel(UnetModel):
     
         # initialize according to arguments 
         # these are overwritten if a model requires it (bact_omni the most rectrictive)
-        print('tytytytyt',nclasses)
         self.omni = omni
         self.nclasses = nclasses 
         self.diam_mean = diam_mean
