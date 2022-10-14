@@ -13,7 +13,8 @@ gui_deps = [
         'PyQt6', 
         'PyQt6.sip',
         'google-cloud-storage',
-        'PyQtDarkTheme@git+https://github.com/kevinjohncutler/omnipose-theme#egg=PyQtDarkTheme',
+        'omnipose-theme',
+        # 'PyQtDarkTheme@git+https://github.com/kevinjohncutler/omnipose-theme#egg=PyQtDarkTheme',
         'superqt','colour','darkdetect'
         ]
 
@@ -28,8 +29,8 @@ omni_deps = [
         'scikit-learn',
         'edt',
         'torch_optimizer', 
-        # 'ncolor' needs updating, just use git for now unless I make all the rest PyPi
-        'ncolor@git+https://github.com/kevinjohncutler/ncolor#egg=ncolor'
+        'ncolor'
+        # 'ncolor@git+https://github.com/kevinjohncutler/ncolor#egg=ncolor'
         ]
 
 distributed_deps = [
@@ -55,7 +56,7 @@ with open("README.md", "r") as fh:
     
     
 setup(
-    name="cellpose",
+    name="cellpose-omni",
     license="BSD",
     author="Kevin Cutler",
     author_email="kevinjohncutler@outlook.com",
