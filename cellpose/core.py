@@ -22,6 +22,9 @@ try:
 except:
     MXNET_ENABLED = False
 
+import platform  
+ARM = 'arm' in platform.processor() # the backend chack for apple silicon does not work on intel macs
+
 try:
     import torch
     from torch.cuda.amp import autocast, GradScaler
@@ -29,7 +32,8 @@ try:
     from torch.utils import mkldnn as mkldnn_utils
     from . import resnet_torch
     TORCH_ENABLED = True
-    torch_GPU = torch.device('mps') if torch.backends.mps.is_available() else torch.device('cuda')
+    ARM = torch.backends.mps.is_available() and ARM
+    torch_GPU = torch.device('mps') if ARM else torch.device('cuda')
     torch_CPU = torch.device('cpu')
 except Exception as e:
     TORCH_ENABLED = False
@@ -66,22 +70,22 @@ def use_gpu(gpu_number=0, use_torch=True):
 def _use_gpu_torch(gpu_number=0):
     try:
         # device = torch.device('cuda:' + str(gpu_number))
-        device = torch.device(f'mps:{gpu_number}') if torch.backends.mps.is_available() else torch.device(f'cuda:{gpu_number}')
+        device = torch.device(f'mps:{gpu_number}') if ARM else torch.device(f'cuda:{gpu_number}')
         _ = torch.zeros([1, 2, 3]).to(device)
-        core_logger.info('** TORCH CUDA version installed and working. **')
+        core_logger.info('** TORCH GPU version installed and working. **')
         return True
-    except Exception as e:
-        core_logger.info('TORCH CUDA version not installed/working.', e)
+    except:# Exception as e:
+        core_logger.info('TORCH GPU version not installed/working.')#, e)
         return False
 
 def assign_device(use_torch=True, gpu=False, device=0):
     if gpu and use_gpu(use_torch=True):
         # device = torch.device(f'cuda:{device}')
-        device = torch.device(f'mps:{device}') if torch.backends.mps.is_available() else torch.device(f'cuda:{device}')
+        device = torch_GPU
         gpu = True
         core_logger.info('>>>> using GPU')
     else:
-        device = torch.device('cpu')
+        device = torch_CPU
         core_logger.info('>>>> using CPU')
         gpu=False
     return device, gpu
