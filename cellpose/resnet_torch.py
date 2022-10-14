@@ -12,6 +12,13 @@ import torch.utils.checkpoint as cp
 
 from . import transforms, io, dynamics, utils
 
+import platform  
+ARM = 'arm' in platform.processor() # the backend chack for apple silicon does not work on intel macs
+ARM = torch.backends.mps.is_available() and ARM
+torch_GPU = torch.device('mps') if ARM else torch.device('cuda')
+torch_CPU = torch.device('cpu')
+
+
 sz = 3 #kernel size, works as xy or xyz/xyt equally well 
 
 def batchconv(in_channels, out_channels, sz, dim):
@@ -269,7 +276,7 @@ class CPnet(nn.Module):
         
     def load_model(self, filename, cpu=False):
         if not cpu:
-            self.load_state_dict(torch.load(filename,map_location=torch.device('mps')))
+            self.load_state_dict(torch.load(filename,map_location=torch_GPU))
         else:
             self.__init__(self.nbase,
                           self.nout,
@@ -282,7 +289,7 @@ class CPnet(nn.Module):
                           self.checkpoint,
                           self.do_dropout,
                           self.kernel_size)
-            state_dict = torch.load(filename, map_location=torch.device('cpu'))
+            state_dict = torch.load(filename, map_location=torch_CPU)
             # print('ggg',state_dict)
             try:
 #                 from collections import OrderedDict

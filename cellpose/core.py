@@ -35,6 +35,7 @@ try:
     ARM = torch.backends.mps.is_available() and ARM
     torch_GPU = torch.device('mps') if ARM else torch.device('cuda')
     torch_CPU = torch.device('cpu')
+    print('yoyo',torch_GPU,ARM)
 except Exception as e:
     TORCH_ENABLED = False
     print('core.py torch import error',e)
@@ -132,7 +133,7 @@ class UnetModel():
         if device is not None:
             if torch:
                 # device_gpu = self.device.type=='cuda'
-                device_gpu = self.device.type=='mps' if torch.backends.mps.is_available() else self.device.type=='cuda'
+                device_gpu = self.device.type=='mps' if ARM else self.device.type=='cuda'
                 
             else:
                 device_gpu = self.device.device_type=='gpu'
