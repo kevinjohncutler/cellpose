@@ -2850,7 +2850,7 @@ class MainW(QMainWindow):
                                                transparency=True)[:2]
                 
             except Exception as e:
-                print('NET ERROR: %s'%e)
+                print('GUI.py: NET ERROR: %s'%e)
                 self.progress.setValue(0)
                 return
 

@@ -30,14 +30,6 @@ try:
     from torch import nn
     from torch.utils import mkldnn as mkldnn_utils
     TORCH_ENABLED = True
-    # from . import resnet_torch
-    # try: #backends not available in order versions of torch 
-    #     ARM = torch.backends.mps.is_available() and ARM
-    # except Exception as e:
-    #     ARM = False
-    #     print('You are running a version of pytorch that cannot check for backends.',e)
-    # torch_GPU = torch.device('mps') if ARM else torch.device('cuda')
-    # torch_CPU = torch.device('cpu')
     from .resnet_torch import torch_GPU, torch_CPU, CPnet, ARM
 except Exception as e:
     TORCH_ENABLED = False

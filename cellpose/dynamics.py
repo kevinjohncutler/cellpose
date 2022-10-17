@@ -28,10 +28,8 @@ if OMNI_INSTALLED:
 try:
     import torch
     from torch import nn
-    from . import resnet_torch
     TORCH_ENABLED = True
-    torch_GPU = torch.device('mps') if torch.backends.mps.is_available() else torch.device('cuda')
-    torch_CPU = torch.device('cpu')
+    from .resnet_torch import torch_GPU, torch_CPU 
 except Exception as e:
     TORCH_ENABLED = False
     print('dynamics.py torch import error',e)
