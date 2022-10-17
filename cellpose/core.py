@@ -22,23 +22,23 @@ try:
 except:
     MXNET_ENABLED = False
 
-import platform  
-ARM = 'arm' in platform.processor() # the backend chack for apple silicon does not work on intel macs
+
 
 try:
     import torch
     from torch.cuda.amp import autocast, GradScaler
     from torch import nn
     from torch.utils import mkldnn as mkldnn_utils
-    from . import resnet_torch
     TORCH_ENABLED = True
-    try: #backends not available in order versions of torch 
-        ARM = torch.backends.mps.is_available() and ARM
-    except Exception as e:
-        ARM = False
-        print('You are running a version of pytorch that cannot check for backends.',e)
-    torch_GPU = torch.device('mps') if ARM else torch.device('cuda')
-    torch_CPU = torch.device('cpu')
+    # from . import resnet_torch
+    # try: #backends not available in order versions of torch 
+    #     ARM = torch.backends.mps.is_available() and ARM
+    # except Exception as e:
+    #     ARM = False
+    #     print('You are running a version of pytorch that cannot check for backends.',e)
+    # torch_GPU = torch.device('mps') if ARM else torch.device('cuda')
+    # torch_CPU = torch.device('cpu')
+    from .resnet_torch import torch_GPU, torch_CPU, CPnet, ARM
 except Exception as e:
     TORCH_ENABLED = False
     print('core.py torch import error',e)
@@ -170,17 +170,17 @@ class UnetModel():
         
         if self.torch:
             self.nbase = [nchan, 32, 64, 128, 256]
-            self.net = resnet_torch.CPnet(self.nbase, 
-                                          self.nclasses, 
-                                          sz=3,
-                                          residual_on=residual_on, 
-                                          style_on=style_on,
-                                          concatenation=concatenation,
-                                          mkldnn=self.mkldnn, 
-                                          dim=self.dim, 
-                                          checkpoint=self.checkpoint,
-                                          dropout=self.dropout,
-                                          kernel_size=self.kernel_size).to(self.device)
+            self.net = CPnet(self.nbase, 
+                              self.nclasses, 
+                              sz=3,
+                              residual_on=residual_on, 
+                              style_on=style_on,
+                              concatenation=concatenation,
+                              mkldnn=self.mkldnn, 
+                              dim=self.dim, 
+                              checkpoint=self.checkpoint,
+                              dropout=self.dropout,
+                              kernel_size=self.kernel_size).to(self.device)
         else:
             self.net = resnet_style.CPnet(self.nbase, nout=self.nclasses,
                                         residual_on=residual_on, 

@@ -14,10 +14,16 @@ from . import transforms, io, dynamics, utils
 
 import platform  
 ARM = 'arm' in platform.processor() # the backend chack for apple silicon does not work on intel macs
-ARM = torch.backends.mps.is_available() and ARM
+# ARM = torch.backends.mps.is_available() and ARM
+# torch_GPU = torch.device('mps') if ARM else torch.device('cuda')
+# torch_CPU = torch.device('cpu')
+try: #backends not available in order versions of torch 
+    ARM = torch.backends.mps.is_available() and ARM
+except Exception as e:
+    ARM = False
+    print('You are running a version of pytorch that cannot check for backends.',e)
 torch_GPU = torch.device('mps') if ARM else torch.device('cuda')
 torch_CPU = torch.device('cpu')
-
 
 sz = 3 #kernel size, works as xy or xyz/xyt equally well 
 
