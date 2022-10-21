@@ -4,7 +4,7 @@ from setuptools import setup
 install_deps = ['numpy>=1.22.4', 'scipy', 'natsort',
                 'tifffile', 'tqdm', 'numba', 
                 'torch>=1.6',
-                'opencv-python==4.5.5.64', # headless not working with pyinstaller 
+                'opencv-python-headless', # headless not working with pyinstaller 
                 'fastremap', 'imagecodecs'
                 ]
 
@@ -47,7 +47,7 @@ try:
     a = torch.ones(2, 3)
     version = int(torch.__version__[2])
     if version >= 6:
-        install_deps.remove('torch')
+        install_deps.remove('torch>=1.6')
 except:
     pass
 
