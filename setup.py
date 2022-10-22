@@ -10,8 +10,8 @@ install_deps = ['numpy>=1.22.4', 'scipy', 'natsort',
 
 gui_deps = [
         'pyqtgraph>=0.12.4', 
-        'PyQt6', 
-        'PyQt6.sip',
+        'PyQt6.sip', 
+        'PyQt6',
         'google-cloud-storage',
         'omnipose-theme',
         # 'PyQtDarkTheme@git+https://github.com/kevinjohncutler/omnipose-theme#egg=PyQtDarkTheme',
