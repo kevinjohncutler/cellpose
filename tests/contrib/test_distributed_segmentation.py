@@ -8,7 +8,7 @@ import pytest
 import tifffile
 from dask.array.utils import assert_eq
 
-from cellpose.contrib import distributed_segmentation
+from cellpose_omni.contrib import distributed_segmentation
 
 TESTDATA = pathlib.Path(__file__).parent / "testdata"
 

@@ -1,4 +1,4 @@
-from cellpose.transforms import *
+from cellpose_omni.transforms import *
 # so the test was is actually broken in that it passes in an image without a channel, 
 # so the imwarp was acting on slices of the image not the full image. 
 

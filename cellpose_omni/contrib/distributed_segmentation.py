@@ -164,7 +164,7 @@ def segment_chunk(
     # details as a random seed.
     np.random.seed(index)
 
-    from cellpose import models
+    from cellpose_omni import models
 
     model = models.Cellpose(gpu=True, model_type=model_type, net_avg=not fast_mode)
 
