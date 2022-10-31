@@ -358,6 +358,7 @@ class UnetModel():
                 y, style = self.net(X)
         else:
             y, style = self.net(X)
+        del X 
         if self.mkldnn:
             self.net.to(torch_CPU)
         y = self._from_device(y)
@@ -800,7 +801,8 @@ class UnetModel():
             
             if self.autocast:
                 with autocast(): 
-                    y = self.net(X)[0] 
+                    y = self.net(X)[0]
+                    del X
                     loss = self.loss_fn(lbl,y)
                 self.scaler.scale(loss).backward()
                 train_loss = loss.item()
@@ -809,6 +811,7 @@ class UnetModel():
                 self.scaler.update()
             else:
                 y = self.net(X)[0]
+                del X
                 loss = self.loss_fn(lbl,y)
                 loss.backward()
                 train_loss = loss.item()
@@ -817,6 +820,7 @@ class UnetModel():
         else:
             with mx.autograd.record():
                 y = self.net(X)[0]
+                del X
                 loss = self.loss_fn(lbl, y)
             loss.backward()
             train_loss = nd.sum(loss).asscalar()
@@ -829,11 +833,13 @@ class UnetModel():
             self.net.eval()
             with torch.no_grad():
                 y, style = self.net(X)
+                del X
                 loss = self.loss_fn(lbl,y)
                 test_loss = loss.item()
                 test_loss *= len(x)
         else:
             y, style = self.net(X)
+            del X
             loss = self.loss_fn(lbl, y)
             test_loss = nd.sum(loss).asnumpy()
         return test_loss
@@ -1048,10 +1054,7 @@ class UnetModel():
                     file_name = os.path.join(file_path, file_name)
                     ksave += 1
                     core_logger.info(f'saving network parameters to {file_name}')
-                    if self.torch:
-                        self.net.module.save_model(file_name)
-                    else:
-                        self.net.save_model(file_name)
+                    self.net.save_model(file_name)
             else:
                 file_name = save_path
 

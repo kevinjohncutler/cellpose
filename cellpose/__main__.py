@@ -269,7 +269,6 @@ def main(omni_CLI=False):
             # args.dropout = True
             args.RAdam = True
 
-        print('yoyoyoyoyggggggggg',args.nclasses)
         # EVALUATION BRANCH
         if not args.train and not args.train_size:
             tic = time.time()
