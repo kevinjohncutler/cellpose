@@ -1054,7 +1054,15 @@ class UnetModel():
                     file_name = os.path.join(file_path, file_name)
                     ksave += 1
                     core_logger.info(f'saving network parameters to {file_name}')
-                    self.net.save_model(file_name)
+                    
+                    # self.net.save_model(file_name)
+                    # whether or not we are using dataparallel 
+                    # this logic appears elsewhere in models.py
+                    if self.torch and self.gpu:
+                        self.net.module.save_model(file_name)
+                    else:
+                        self.net.save_model(file_name)
+                    
             else:
                 file_name = save_path
 
