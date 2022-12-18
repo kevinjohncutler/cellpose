@@ -4,12 +4,12 @@ import subprocess
 import numpy as np
 from natsort import natsorted
 from tqdm import tqdm
-from cellpose import utils, models, io
+from cellpose_omni import utils, models, io
 
 from .models import MODEL_NAMES
     
 try:
-    from cellpose.gui import gui 
+    from cellpose_omni.gui import gui 
     GUI_ENABLED = True 
 except ImportError as err:
     GUI_ERROR = err

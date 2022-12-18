@@ -285,10 +285,10 @@ def masks_flows_to_seg(images, masks, flows, diams, file_names, channels=None):
         images input into cellpose
 
     masks: (list of) 2D arrays, int
-        masks output from Cellpose.eval, where 0=NO masks; 1,2,...=mask labels
+        masks output from cellpose_omni.eval, where 0=NO masks; 1,2,...=mask labels
 
     flows: (list of) list of ND arrays 
-        flows output from Cellpose.eval
+        flows output from cellpose_omni.eval
 
     diams: float array
         diameters used to run Cellpose
@@ -391,10 +391,10 @@ def save_masks(images, masks, flows, file_names, png=True, tif=False,
         images input into cellpose
 
     masks: (list of) 2D arrays, int
-        masks output from Cellpose.eval, where 0=NO masks; 1,2,...=mask labels
+        masks output from cellpose_omni.eval, where 0=NO masks; 1,2,...=mask labels
 
     flows: (list of) list of ND arrays 
-        flows output from Cellpose.eval
+        flows output from cellpose_omni.eval
 
     file_names: (list of) str
         names of files of images

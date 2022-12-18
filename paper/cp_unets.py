@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from matplotlib import rc
 import cv2
 from scipy import stats
-from cellpose import models, datasets, utils, transforms, io, metrics
+from cellpose_omni import models, datasets, utils, transforms, io, metrics
 
 thresholds = np.arange(0.5, 1.05, 0.05)
 

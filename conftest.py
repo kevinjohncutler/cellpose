@@ -1,6 +1,6 @@
 import pytest
 import os, sys, shutil
-from cellpose import utils
+from cellpose_omni import utils
 
 from pathlib import Path
 

@@ -89,6 +89,6 @@ setup(
     ),
      entry_points = {
         'console_scripts': [
-          'cellpose = cellpose.__main__:main']
+          'cellpose_omni = cellpose_omni.__main__:main']
      }
 )

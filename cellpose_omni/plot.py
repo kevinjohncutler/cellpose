@@ -25,7 +25,8 @@ except:
     OMNI_INSTALLED = False
 
 # modified to use sinebow color
-def dx_to_circ(dP,transparency=False,mask=None):
+import colorsys
+def dx_to_circ(dP,transparency=False,mask=None,sinebow=True):
     """ dP is 2 x Y x X => 'optic' flow representation 
     
     Parameters
@@ -45,10 +46,13 @@ def dx_to_circ(dP,transparency=False,mask=None):
     dP = np.array(dP)
     mag = np.clip(transforms.normalize99(np.sqrt(np.sum(dP**2,axis=0)),omni=OMNI_INSTALLED), 0, 1.)
     angles = np.arctan2(dP[1], dP[0])+np.pi
-    a = 2
-    r = ((np.cos(angles)+1)/a)
-    g = ((np.cos(angles+2*np.pi/3)+1)/a)
-    b =((np.cos(angles+4*np.pi/3)+1)/a)
+    if sinebow:
+        a = 2
+        r = ((np.cos(angles)+1)/a)
+        g = ((np.cos(angles+2*np.pi/3)+1)/a)
+        b =((np.cos(angles+4*np.pi/3)+1)/a)
+    else:
+        (r, g, b) = colorsys.hsv_to_rgb(angles, 1, 1)
     
     if transparency:
         im = np.stack((r,g,b,mag),axis=-1)
@@ -61,7 +65,7 @@ def dx_to_circ(dP,transparency=False,mask=None):
     im = (np.clip(im, 0, 1) * 255).astype(np.uint8)
     return im
 
-def show_segmentation(fig, img, maski, flowi, channels=[0,0], file_name=None, omni=False, 
+def show_segmentation(fig, img, maski, flowi, bdi=None, channels=[0,0], file_name=None, omni=False, 
                       seg_norm=False, bg_color=None, channel_axis=-1):
     """ plot segmentation results (like on website)
     
@@ -78,10 +82,10 @@ def show_segmentation(fig, img, maski, flowi, channels=[0,0], file_name=None, om
         image input into cellpose
 
     maski: int, 2D array
-        for image k, masks[k] output from Cellpose.eval, where 0=NO masks; 1,2,...=mask labels
+        for image k, masks[k] output from cellpose_omni.eval, where 0=NO masks; 1,2,...=mask labels
 
     flowi: int, 2D array 
-        for image k, flows[k][0] output from Cellpose.eval (RGB of flows)
+        for image k, flows[k][0] output from cellpose_omni.eval (RGB of flows)
 
     channels: list of int (optional, default [0,0])
         channels used to run Cellpose, no need to use if image is RGB
@@ -118,7 +122,10 @@ def show_segmentation(fig, img, maski, flowi, channels=[0,0], file_name=None, om
     ax.set_title('original image')
     ax.axis('off')
 
-    outlines = utils.masks_to_outlines(maski)
+    if bdi is None:
+        outlines = utils.masks_to_outlines(maski)
+    else:
+        outlines = bdi
 
     # Image normalization to improve cell visibility under labels
     if seg_norm:
@@ -321,7 +328,7 @@ def outline_view(img0, maski, color=[1,0,0], channels=None, channel_axis=-1, mod
 #     img0 = utils.rescale(img0)
     if np.max(color)<=1:
         color = np.array(color)*(2**8-1)
-
+    
     img0 = image_to_rgb(img0, channels=channels, channel_axis=channel_axis, omni=True) 
     if SKIMAGE_ENABLED:
         outlines = find_boundaries(maski,mode=mode) #not using masks_to_outlines as that gives border 'outlines'

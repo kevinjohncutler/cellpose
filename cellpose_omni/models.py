@@ -137,7 +137,7 @@ class Cellpose():
     def eval(self, x, batch_size=8, channels=None, channel_axis=None, z_axis=None,
              invert=False, normalize=True, diameter=30., do_3D=False, anisotropy=None,
              net_avg=True, augment=False, tile=True, tile_overlap=0.1, resample=True, 
-             interp=True, cluster=False, flow_threshold=0.4, mask_threshold=0.0, 
+             interp=True, cluster=False, boundary_seg=False, flow_threshold=0.4, mask_threshold=0.0, 
              cellprob_threshold=None, dist_threshold=None, diam_threshold=12., min_size=15,
              stitch_threshold=0.0, rescale=None, progress=None, omni=False, verbose=False,
              transparency=False, model_loaded=False):
@@ -493,7 +493,7 @@ class CellposeModel(UnetModel):
              z_axis=None, normalize=True, invert=False, 
              rescale=None, diameter=None, do_3D=False, anisotropy=None, net_avg=True, 
              augment=False, tile=True, tile_overlap=0.1,
-             resample=True, interp=True, cluster=False,
+             resample=True, interp=True, cluster=False, boundary_seg=False,
              flow_threshold=0.4, mask_threshold=0.0, diam_threshold=12.,
              cellprob_threshold=None, dist_threshold=None, flow_factor=5.0,
              compute_masks=True, min_size=15, stitch_threshold=0.0, progress=None, omni=False, 
@@ -658,6 +658,7 @@ class CellposeModel(UnetModel):
                                                  resample=resample, 
                                                  interp=interp,
                                                  cluster=cluster,
+                                                 boundary_seg=boundary_seg,
                                                  mask_threshold=mask_threshold, 
                                                  diam_threshold=diam_threshold,
                                                  flow_threshold=flow_threshold, 
@@ -703,38 +704,39 @@ class CellposeModel(UnetModel):
             rescale = self.diam_mean / diameter if (rescale is None and (diameter is not None and diameter>0)) else rescale
             rescale = 1.0 if rescale is None else rescale
 
-            masks, styles, dP, cellprob, p, bd, tr = self._run_cp(x, 
-                                                          compute_masks=compute_masks,
-                                                          normalize=normalize,
-                                                          invert=invert,
-                                                          rescale=rescale, 
-                                                          net_avg=net_avg, 
-                                                          resample=resample,
-                                                          augment=augment, 
-                                                          tile=tile, 
-                                                          tile_overlap=tile_overlap,
-                                                          mask_threshold=mask_threshold, 
-                                                          diam_threshold=diam_threshold,
-                                                          flow_threshold=flow_threshold,
-                                                          flow_factor=flow_factor,
-                                                          interp=interp,
-                                                          cluster=cluster,
-                                                          min_size=min_size, 
-                                                          do_3D=do_3D, 
-                                                          anisotropy=anisotropy,
-                                                          stitch_threshold=stitch_threshold,
-                                                          omni=omni,
-                                                          calc_trace=calc_trace,
-                                                          verbose=verbose)
+            masks, styles, dP, cellprob, p, bd, tr, bounds = self._run_cp(x, 
+                                                                          compute_masks=compute_masks,
+                                                                          normalize=normalize,
+                                                                          invert=invert,
+                                                                          rescale=rescale, 
+                                                                          net_avg=net_avg, 
+                                                                          resample=resample,
+                                                                          augment=augment, 
+                                                                          tile=tile, 
+                                                                          tile_overlap=tile_overlap,
+                                                                          mask_threshold=mask_threshold, 
+                                                                          diam_threshold=diam_threshold,
+                                                                          flow_threshold=flow_threshold,
+                                                                          flow_factor=flow_factor,
+                                                                          interp=interp,
+                                                                          cluster=cluster,
+                                                                          boundary_seg=boundary_seg,                                                                             
+                                                                          min_size=min_size, 
+                                                                          do_3D=do_3D, 
+                                                                          anisotropy=anisotropy,
+                                                                          stitch_threshold=stitch_threshold,
+                                                                          omni=omni,
+                                                                          calc_trace=calc_trace,
+                                                                          verbose=verbose)
             flows = [plot.dx_to_circ(dP,transparency=transparency) if self.nclasses>1 else np.zeros(cellprob.shape+(3,),np.uint8),
-                     dP, cellprob, p, bd, tr]
+                     dP, cellprob, p, bd, tr, bounds]
             return masks, flows, styles
 
     def _run_cp(self, x, compute_masks=True, normalize=True, invert=False,
                 rescale=1.0, net_avg=True, resample=True,
                 augment=False, tile=True, tile_overlap=0.1,
                 mask_threshold=0.0, diam_threshold=12., flow_threshold=0.4, flow_factor=5.0, min_size=15,
-                interp=True, cluster=False, anisotropy=1.0, do_3D=False, stitch_threshold=0.0,
+                interp=True, cluster=False, boundary_seg=False, anisotropy=1.0, do_3D=False, stitch_threshold=0.0,
                 omni=False, calc_trace=False, verbose=False):
         
         tic = time.time()
@@ -826,34 +828,35 @@ class CellposeModel(UnetModel):
             if do_3D:
                 if not (omni and OMNI_INSTALLED):
                     # run cellpose compute_masks                   
-                    masks, p, tr = dynamics.compute_masks(dP, cellprob, bd, niter=niter, resize=None, 
-                                                          mask_threshold=mask_threshold,
-                                                          diam_threshold=diam_threshold, 
-                                                          flow_threshold=flow_threshold,
-                                                          interp=interp, do_3D=do_3D, min_size=min_size, verbose=verbose,
-                                                          use_gpu=self.gpu, device=self.device, nclasses=self.nclasses,
-                                                          calc_trace=calc_trace)
+                    masks, bounds, p, tr = dynamics.compute_masks(dP, cellprob, bd, niter=niter, resize=None, 
+                                                                  mask_threshold=mask_threshold,
+                                                                  diam_threshold=diam_threshold, 
+                                                                  flow_threshold=flow_threshold,
+                                                                  interp=interp, do_3D=do_3D, min_size=min_size, verbose=verbose,
+                                                                  use_gpu=self.gpu, device=self.device, nclasses=self.nclasses,
+                                                                  calc_trace=calc_trace)
                 else:
                     # run omnipose compute_masks
-                    masks, p, tr = omnipose.core.compute_masks(dP, cellprob, bd,
-                                                               do_3D=do_3D,
-                                                               niter=niter,
-                                                               resize=None,
-                                                               min_size=min_size, 
-                                                               mask_threshold=mask_threshold,  
-                                                               diam_threshold=diam_threshold,
-                                                               flow_threshold=flow_threshold, 
-                                                               flow_factor=flow_factor,      
-                                                               interp=interp, 
-                                                               cluster=cluster, 
-                                                               calc_trace=calc_trace, 
-                                                               verbose=verbose,
-                                                               use_gpu=self.gpu, 
-                                                               device=self.device, 
-                                                               nclasses=self.nclasses, 
-                                                               dim=self.dim)
+                    masks, bounds, p, tr = omnipose.core.compute_masks(dP, cellprob, bd,
+                                                                       do_3D=do_3D,
+                                                                       niter=niter,
+                                                                       resize=None,
+                                                                       min_size=min_size, 
+                                                                       mask_threshold=mask_threshold,  
+                                                                       diam_threshold=diam_threshold,
+                                                                       flow_threshold=flow_threshold, 
+                                                                       flow_factor=flow_factor,      
+                                                                       interp=interp, 
+                                                                       cluster=cluster,
+                                                                       boundary_seg=boundary_seg,
+                                                                       calc_trace=calc_trace, 
+                                                                       verbose=verbose,
+                                                                       use_gpu=self.gpu, 
+                                                                       device=self.device, 
+                                                                       nclasses=self.nclasses, 
+                                                                       dim=self.dim)
             else:
-                masks, p, tr = [], [], []
+                masks, bounds, p, tr = [], [], [], []
                 resize = shape[-(self.dim+1):-1] if not resample else None 
                 # print('compute masks 2',resize,shape,resample)
                 for i in iterator:
@@ -886,6 +889,7 @@ class CellposeModel(UnetModel):
                                                               flow_factor=flow_factor,             
                                                               interp=interp, 
                                                               cluster=cluster, 
+                                                              boundary_seg=boundary_seg,
                                                               calc_trace=calc_trace, 
                                                               verbose=verbose,
                                                               use_gpu=self.gpu, 
@@ -895,8 +899,10 @@ class CellposeModel(UnetModel):
                     masks.append(outputs[0])
                     p.append(outputs[1])
                     tr.append(outputs[2])
+                    bounds.append(outputs[3])
                 
                 masks = np.array(masks)
+                bounds = np.array(bounds)
                 p = np.array(p)
                 tr = np.array(tr)
 
@@ -907,12 +913,13 @@ class CellposeModel(UnetModel):
             flow_time = time.time() - tic
             if nimg > 1:
                 models_logger.info('masks created in %2.2fs'%(flow_time))
-            masks, dP, cellprob, p = masks.squeeze(), dP.squeeze(), cellprob.squeeze(), p.squeeze()
+            masks, bounds, dP, cellprob = masks.squeeze(), bounds.squeeze(), dP.squeeze(), cellprob.squeeze()
+            p = p.squeeze() if p is not None else p
             bd = bd.squeeze() if bd is not None else bd
         else:
-            masks, p , tr = np.zeros(0), np.zeros(0), np.zeros(0) #pass back zeros if not compute_masks            
+            masks, bounds, p , tr = np.zeros(0), np.zeros(0), np.zeros(0), np.zeros(0) #pass back zeros if not compute_masks            
             
-        return masks, styles, dP, cellprob, p, bd, tr
+        return masks, styles, dP, cellprob, p, bd, tr, bounds
 
         
     def loss_fn(self, lbl, y):

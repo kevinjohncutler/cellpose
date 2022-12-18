@@ -36,6 +36,7 @@ except Exception as e:
 
 try:
     from skimage import filters
+    from skimage.segmentation import find_boundaries
     SKIMAGE_ENABLED = True
 except:
     SKIMAGE_ENABLED = False
@@ -818,16 +819,17 @@ def compute_masks(dP, cellprob, bd=None, p=None, inds=None, niter=200, mask_thre
         shape = resize if resize is not None else cellprob.shape
         mask = np.zeros(shape, np.uint16)
         p = np.zeros((len(shape), *shape), np.uint16)
-        return mask, p, []
+        return mask, mask, p, []
 
 
     # moving the cleanup to the end helps avoid some bugs arising from scaling...
     # maybe better would be to rescale the min_size and hole_size parameters to do the
     # cleanup at the prediction scale, or switch depending on which one is bigger... 
     mask = utils.fill_holes_and_remove_small_masks(mask, min_size=min_size)
+    bounds = find_boundaries(mask,mode='inner')
 
     if mask.dtype==np.uint32:
         dynamics_logger.warning('more than 65535 masks in image, masks returned as np.uint32')
 
-    return mask, p, tr
+    return mask, bounds, p, tr
 
