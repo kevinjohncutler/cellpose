@@ -138,15 +138,15 @@ def show_segmentation(fig, img, maski, flowi, bdi=None, channels=[0,0], file_nam
     # the mask_overlay function changes colors (preserves only hue I think). The label2rgb function from
     # skimage.color works really well. 
     if omni and SKIMAGE_ENABLED and OMNI_INSTALLED:
-        c = sinebow(5)
+        m,n = ncolor.label(maski,max_depth=20,return_n=True)
+        c = sinebow(n)
         colors = np.array(list(c.values()))[1:]
-        # img1 = normalize99(np.mean(img1,axis=-1),omni=True)
         img1 = rescale(color.rgb2gray(img1))
 
-        overlay = color.label2rgb(ncolor.label(maski,max_depth=20),img1,colors,bg_label=0,alpha=1/3)
-        
-        # overlay = np.uint8(np.clip(overlay, 0, 1))
-        # overlay[maski==0] = img1[maski==0] #restore original level to background regions
+        overlay = color.label2rgb(m,img1,colors,
+                                  bg_label=0,
+                                  alpha=np.stack([((m>0)*1.+outlines*0.75)/3]*3,axis=-1))
+    
     else:
         overlay = mask_overlay(img0, maski)
 
@@ -321,7 +321,7 @@ def disk(med, r, Ly, Lx):
     x = xx[inds].flatten()
     return y,x
 
-def outline_view(img0, maski, color=[1,0,0], channels=None, channel_axis=-1, mode='inner'):
+def outline_view(img0, maski, boundaries=None, color=[1,0,0], channels=None, channel_axis=-1, mode='inner'):
     """
     Generates a red outline overlay onto image.
     """
@@ -329,11 +329,15 @@ def outline_view(img0, maski, color=[1,0,0], channels=None, channel_axis=-1, mod
     if np.max(color)<=1:
         color = np.array(color)*(2**8-1)
     
-    img0 = image_to_rgb(img0, channels=channels, channel_axis=channel_axis, omni=True) 
-    if SKIMAGE_ENABLED:
-        outlines = find_boundaries(maski,mode=mode) #not using masks_to_outlines as that gives border 'outlines'
+    img0 = image_to_rgb(img0, channels=channels, channel_axis=channel_axis, omni=True)
+    if boundaries is None:
+        if SKIMAGE_ENABLED:
+            outlines = find_boundaries(maski,mode=mode) #not using masks_to_outlines as that gives border 'outlines'
+        else:
+            outlines = utils.masks_to_outlines(maski,mode=mode) 
+            
     else:
-        outlines = utils.masks_to_outlines(maski,mode=mode) #not using masks_to_outlines as that gives border 'outlines'
+        outlines = boundaries
     outY, outX = np.nonzero(outlines)
     imgout = img0.copy()
     imgout[outY, outX] = color

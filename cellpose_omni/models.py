@@ -943,7 +943,7 @@ class CellposeModel(UnetModel):
               save_path=None, save_every=100, save_each=False,
               learning_rate=0.2, n_epochs=500, momentum=0.9, SGD=True,
               weight_decay=0.00001, batch_size=8, nimg_per_epoch=None,
-              rescale=True, min_train_masks=5, netstr=None, tyx=None):
+              rescale=True, min_train_masks=5, netstr=None, tyx=None, bd=False):
 
         """ train network with images train_data 
         
@@ -994,7 +994,7 @@ class CellposeModel(UnetModel):
                 use SGD as optimization instead of RAdam
 
             batch_size: int (optional, default 8)
-                number of 224x224 patches to run simultaneously on the GPU
+                number of tyx-sized patches to run simultaneously on the GPU
                 (can make smaller or bigger depending on GPU memory usage)
 
             nimg_per_epoch: int (optional, default None)
@@ -1011,6 +1011,13 @@ class CellposeModel(UnetModel):
 
             netstr: str (default, None)
                 name of network, otherwise saved with name as params + training start time
+                
+            tyx: int, tuple (default, 224x224 in 2D)
+                size of image patches used for training
+                
+            bd: bool (default, False)
+                treat ND masks not as label matrices but as N-connected boundaries = 2,
+                internal voxels = 1, and background = 0
 
         """
         if rescale:
@@ -1027,8 +1034,11 @@ class CellposeModel(UnetModel):
         # do not precompute flows for omnipose 
         if self.omni and OMNI_INSTALLED:
             models_logger.info('No precomuting flows with Omnipose. Computed during training.')
-            
-            train_labels = [omnipose.utils.format_labels(label) for label in train_labels]
+            # here is where we can handle a bit of the mask formatting for boundary masks
+            if not bd:
+                train_labels = [omnipose.utils.format_labels(label) for label in train_labels]
+            # else:
+                
             nmasks = np.array([label.max() for label in train_labels])
 
         else:

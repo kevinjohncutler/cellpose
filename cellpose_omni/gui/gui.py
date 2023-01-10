@@ -202,27 +202,27 @@ def run(image=PRELOAD_IMAGE):
     for i in [16,24,32,48,64,256]:
         app_icon.addFile(icon_path, QtCore.QSize(i,i)) 
     app.setWindowIcon(app_icon) # self.
-
+    
     # models.download_model_weights() # does not exist
     win = MainW(size, clipboard, image=image)
     # the below code block will automatically toggle the theme with the system,
     # but the manual color definitions (everytwhere I set a style sheet) mess that up
     sync = 1
-    if sync:
+    if sync:        
         @pyqtSlot()
         def sync_theme_with_system() -> None:
             theme = darkdetect.theme().lower()
             stylesheet = qdarktheme.load_stylesheet(theme)
             QApplication.instance().setStyleSheet(stylesheet)
             win.darkmode = theme=='dark'
-            win.accent = win.palette().brush(QPalette.Highlight).color()
+            win.accent = win.palette().brush(QPalette.ColorRole.Highlight).color()
             if hasattr(win,'win'):
                 win.win.setBackground("k" if win.darkmode else '#f0f0f0') #pull out real colors from theme here from example
             win.set_hist_colors()
             win.set_button_color()
             win.set_crosshair_colors()
             # win.update_plot()
-        app.paletteChanged.connect(sync_theme_with_system)      
+        app.paletteChanged.connect(sync_theme_with_system)             
         sync_theme_with_system()
     else:
         # app.setStyleSheet(qdarktheme.load_stylesheet())
@@ -245,12 +245,11 @@ class MainW(QMainWindow):
     def __init__(self, size, clipboard, image=None):
         super(MainW, self).__init__()
             # palette = app.palette()
-            # palette.setColor(QPalette.ColorRole.Link, dark_palette.link().color())
+            # palette.setColor(QPalette.ColorRole.ColorRole.Link, dark_palette.link().color())
             # app.setPalette(palette)
 
         # print(qdarktheme.load_palette().link().color())
-        
-        self.darkmode = darkdetect.theme().lower() == 'dark' # have to initialize 
+        self.darkmode = str(darkdetect.theme().lower()) == 'dark' # have to initialize; str catches None on some systems
 
         pg.setConfigOptions(imageAxisOrder="row-major")
         self.clipboard = clipboard
@@ -274,16 +273,16 @@ class MainW(QMainWindow):
         #                      "background-color: {};".format('#484848'),
         #                      "border-color: #565656;",
         #                      "color:white;}"])
-        c = self.palette().brush(QPalette.Base).color()
-        text_color = 'rgba'+str(self.palette().brush(QPalette.Text).color().getRgb())
+        c = self.palette().brush(QPalette.ColorRole.Base).color()
+        text_color = 'rgba'+str(self.palette().brush(QPalette.ColorRole.Text).color().getRgb())
         self.styleUnpressed = ''.join(["QPushButton {Text-align: middle; ",
                                        "background-color: {}; ".format('rgba'+str(c.getRgb())),
                                        "color: {}; ".format(text_color),
                                        "}"])
-        c = self.palette().brush(QPalette.Button).color()
+        c = self.palette().brush(QPalette.ColorRole.Button).color()
         self.stylePressed = ''.join(["QPushButton {Text-align: middle; ",
                                        "background-color: {}; ".format('rgba'+str(c.getRgb())),
-                                        "border-color: {}; ".format('rgba'+str(self.palette().brush(QPalette.ButtonText).color().getRgb())),
+                                        "border-color: {}; ".format('rgba'+str(self.palette().brush(QPalette.ColorRole.ButtonText).color().getRgb())),
                                        "color: {}; ".format(text_color),
                                        "}"])
         # self.styleInactive = ("QPushButton {Text-align: middle; "
@@ -357,7 +356,6 @@ class MainW(QMainWindow):
             self.colormap = ((np.random.rand(1000000,3)*0.8+0.1)*255).astype(np.uint8)
         
 
-
         self.is_stack = True # always loading images of same FOV
         # if called with image, load it
         if image is not None:
@@ -397,8 +395,8 @@ class MainW(QMainWindow):
     def make_buttons(self):
         label_style = ''
         COLORS[0] = '#545454'
-        self.boldfont = QtGui.QFont("Arial", 16, QtGui.QFont.Bold)
-        self.boldfont_button = QtGui.QFont("Arial", 12, QtGui.QFont.Bold)
+        self.boldfont = QtGui.QFont("Arial", 16, QtGui.QFont.Weight.Bold)
+        self.boldfont_button = QtGui.QFont("Arial", 12, QtGui.QFont.Weight.Bold)
         
         self.medfont = QtGui.QFont("Arial", 12)
         self.smallfont = QtGui.QFont("Arial", 10)
@@ -477,9 +475,7 @@ class MainW(QMainWindow):
         
         c+=1
         self.l0.addWidget(self.RGBDropDown, b, c,1, TOOLBAR_WIDTH-c)
-        
-        
-        
+                
         
         b = 1
         self.quadrant_label = QLabel('sectors')
@@ -530,8 +526,8 @@ class MainW(QMainWindow):
         self.l0.addWidget(label, b,c0-1,1,2)
         self.zpos = QLineEdit()
         # self.zpos.setStyleSheet(self.textbox_style)
-        self.zpos.setAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter)
-        # self.zpos.setAlignment(QtCore.Qt.AlignLeft)
+        self.zpos.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        # self.zpos.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
         self.zpos.setText(str(self.currentZ))
         self.zpos.returnPressed.connect(self.compute_scale)
         self.zpos.setFixedWidth(INPUT_WIDTH)
@@ -539,7 +535,6 @@ class MainW(QMainWindow):
         
         # self.l0.addWidget(self.zpos, b, c,1, TOOLBAR_WIDTH-c)
         self.l0.addWidget(self.zpos, b, c0+1,1, 1)
-
         
 
         b+=1
@@ -603,6 +598,7 @@ class MainW(QMainWindow):
         # self.l0.addWidget(label, b,1,1,TOOLBAR_WIDTH-1)
         
         # used in io to rescale, need to aslo adda toggle to use this to override Omnipose rescaling (or rather, input the rescaled image vs raw)
+        
         b+=4
         self.autobtn = QCheckBox('auto-adjust')
         self.autobtn.setStyleSheet(self.checkstyle)
@@ -625,6 +621,7 @@ class MainW(QMainWindow):
         
         self.slider.setDecimals(2) 
         # self.slider.label_shift_x = -10
+        
         self.slider.setHandleLabelPosition(superqt.QLabeledRangeSlider.LabelPosition.NoLabel)
         self.slider.setEdgeLabelMode(superqt.QLabeledRangeSlider.EdgeLabelMode.LabelIsValue)
         self.slider.valueChanged.connect(self.level_change)
@@ -643,7 +640,7 @@ class MainW(QMainWindow):
         label = QLabel('\u2702')
         label.setAlignment(Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter)
         label.setStyleSheet('color: #888888')
-        label.setFont(QtGui.QFont("Arial", 18, QtGui.QFont.Bold))
+        label.setFont(QtGui.QFont("Arial", 18, QtGui.QFont.Weight.Bold))
         self.l0.addWidget(label, b,c,1,1)
         
         
@@ -670,9 +667,6 @@ class MainW(QMainWindow):
         self.gamma_slider.setValue(self.gamma) 
         self.l0.addWidget(self.gamma_slider, b,c+1,1,TOOLBAR_WIDTH-(c+1))
         
-        
-        
-
         
         
         # b+=1
@@ -1060,7 +1054,7 @@ class MainW(QMainWindow):
         # label = QLabel(' Progress:')
         # label.setStyleSheet(label_style)
         # label.setFont(self.medfont)
-        # label.setAlignment(QtCore.Qt.AlignCenter)
+        # label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         # self.l0.addWidget(label, b,4,1,2)
         
         # b+=2
@@ -1319,10 +1313,7 @@ class MainW(QMainWindow):
         self.scroll.valueChanged.connect(self.move_in_Z)
         self.l0.addWidget(self.scroll, b,TOOLBAR_WIDTH+1,1,3*b)
         
-        # self.l0.addWidget(QLabel(''), b, 0,1,TOOLBAR_WIDTH)
-
-        
-        
+        # self.l0.addWidget(QLabel(''), b, 0,1,TOOLBAR_WIDTH)        
 
         
         return b
@@ -1682,7 +1673,7 @@ class MainW(QMainWindow):
         
     def set_hist_colors(self):
         region = self.hist.region
-        # c = self.palette().brush(QPalette.Text).color() # selects white or black from palette
+        # c = self.palette().brush(QPalette.ColorRole.Text).color() # selects white or black from palette
         # selecting from the palette can be handy, but the corresponding colors in light and dark mode do not match up well
         color = '#44444450' if self.darkmode else '#cccccc50'
         # c.setAlpha(20)
@@ -1721,7 +1712,7 @@ class MainW(QMainWindow):
 
         # self.hist = self.img.getHistogram()
         # self.hist.disableAutoHistogramRange()
-        # c = self.palette().brush(QPalette.ToolTipBase).color() # selects white or black from palette
+        # c = self.palette().brush(QPalette.ColorRole.ToolTipBase).color() # selects white or black from palette
         # print(c.getRgb(),'ccc')
         
         # c.setAlpha(100)
@@ -1884,7 +1875,7 @@ class MainW(QMainWindow):
         self.cellpix = np.zeros((1,self.Ly,self.Lx), np.uint32)
         self.outpix = np.zeros((1,self.Ly,self.Lx), np.uint32)
         self.ismanual = np.zeros(0, 'bool')
-        self.accent = self.palette().brush(QPalette.Highlight).color()
+        self.accent = self.palette().brush(QPalette.ColorRole.Highlight).color()
         self.update_plot()
         self.progress.setValue(0)
         self.orthobtn.setChecked(False)

@@ -576,6 +576,7 @@ def reshape_train_test(train_data, train_labels, test_data, test_labels, channel
         transforms_logger.critical(error_message)
         raise ValueError(error_message)
         return
+    
     if train_labels[0].ndim < 2 or train_data[0].ndim < 2:
         error_message = 'training data or labels are not at least two-dimensional'
         transforms_logger.critical(error_message)

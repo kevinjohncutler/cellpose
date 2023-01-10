@@ -522,7 +522,7 @@ def _save_sets(parent):
     base = os.path.splitext(filename)[0]
     flow_threshold, cellprob_threshold = parent.get_thresholds()
     
-    print(parent.cellcolors,'color')
+    # print(parent.cellcolors,'color')
     
     if parent.NZ > 1 and parent.is_stack:
         np.save(base + '_seg.npy',

@@ -58,7 +58,7 @@ class TrainWindow(QDialog):
 
         yoff = 0
         qlabel = QLabel('train model w/ images + _seg.npy in current folder >>')
-        qlabel.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Bold))
+        qlabel.setFont(QtGui.QFont("Arial", 10, QtGui.QFont.Weight.Bold))
         
         qlabel.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         self.l0.addWidget(qlabel, yoff,0,1,2)
@@ -111,13 +111,12 @@ class TrainWindow(QDialog):
         self.buttonBox.rejected.connect(self.reject)
         self.l0.addWidget(self.buttonBox, yoff, 0, 1,4)
 
-        
         # list files in folder
         qlabel = QLabel('filenames')
-        qlabel.setFont(QtGui.QFont("Arial", 8, QtGui.QFont.Bold))
+        qlabel.setFont(QtGui.QFont("Arial", 8, QtGui.QFont.Weight.Bold))
         self.l0.addWidget(qlabel, 0,4,1,1)
         qlabel = QLabel('# of masks')
-        qlabel.setFont(QtGui.QFont("Arial", 8, QtGui.QFont.Bold))
+        qlabel.setFont(QtGui.QFont("Arial", 8, QtGui.QFont.Weight.Bold))
         self.l0.addWidget(qlabel, 0,5,1,1)
     
         for i in range(10):
