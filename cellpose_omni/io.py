@@ -241,7 +241,8 @@ def load_train_test_data(train_dir, test_dir=None, image_filter='', mask_filter=
     # training data
     label_names, flow_names = get_label_files(image_names, label_filter=mask_filter, img_filter=image_filter, flows=True)
     nimg = len(image_names)
-    labels = [imread(label_names[n]) for n in range(nimg)]
+    print(nimg,label_names,flow_names)
+    labels = [imread(l) for l in label_names]
     if flow_names is not None and not unet and not omni:
         for n in range(nimg):
             flows = imread(flow_names[n])
