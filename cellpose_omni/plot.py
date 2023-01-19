@@ -321,7 +321,7 @@ def disk(med, r, Ly, Lx):
     x = xx[inds].flatten()
     return y,x
 
-def outline_view(img0, maski, boundaries=None, color=[1,0,0], channels=None, channel_axis=-1, mode='inner'):
+def outline_view(img0, maski, boundaries=None, color=[1,0,0], channels=None, channel_axis=-1, mode='inner',connectivity=2):
     """
     Generates a red outline overlay onto image.
     """
@@ -332,7 +332,7 @@ def outline_view(img0, maski, boundaries=None, color=[1,0,0], channels=None, cha
     img0 = image_to_rgb(img0, channels=channels, channel_axis=channel_axis, omni=True)
     if boundaries is None:
         if SKIMAGE_ENABLED:
-            outlines = find_boundaries(maski,mode=mode) #not using masks_to_outlines as that gives border 'outlines'
+            outlines = find_boundaries(maski,mode=mode,connectivity=connectivity) #not using masks_to_outlines as that gives border 'outlines'
         else:
             outlines = utils.masks_to_outlines(maski,mode=mode) 
             

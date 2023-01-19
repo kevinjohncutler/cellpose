@@ -211,7 +211,7 @@ def run(image=PRELOAD_IMAGE):
     if sync:        
         @pyqtSlot()
         def sync_theme_with_system() -> None:
-            theme = darkdetect.theme().lower()
+            theme = str(darkdetect.theme()).lower()
             stylesheet = qdarktheme.load_stylesheet(theme)
             QApplication.instance().setStyleSheet(stylesheet)
             win.darkmode = theme=='dark'
@@ -249,7 +249,7 @@ class MainW(QMainWindow):
             # app.setPalette(palette)
 
         # print(qdarktheme.load_palette().link().color())
-        self.darkmode = str(darkdetect.theme().lower()) == 'dark' # have to initialize; str catches None on some systems
+        self.darkmode = str(darkdetect.theme()).lower() == 'dark' # have to initialize; str catches None on some systems
 
         pg.setConfigOptions(imageAxisOrder="row-major")
         self.clipboard = clipboard
