@@ -24,6 +24,8 @@ from ..plot import disk
 
 from .guiparts import TOOLBAR_WIDTH, SPACING, WIDTH_0
 
+ALLOWED_THEMES = ['light','dark']
+
 INPUT_WIDTH = 2*WIDTH_0 + SPACING
 WIDTH_3 = 3*WIDTH_0+2*SPACING
 WIDTH_5 = 5*WIDTH_0+4*SPACING
@@ -212,6 +214,7 @@ def run(image=PRELOAD_IMAGE):
         @pyqtSlot()
         def sync_theme_with_system() -> None:
             theme = str(darkdetect.theme()).lower()
+            theme = theme if theme in ALLOWED_THEMES else 'dark' #default to dark theme 
             stylesheet = qdarktheme.load_stylesheet(theme)
             QApplication.instance().setStyleSheet(stylesheet)
             win.darkmode = theme=='dark'
@@ -249,7 +252,7 @@ class MainW(QMainWindow):
             # app.setPalette(palette)
 
         # print(qdarktheme.load_palette().link().color())
-        self.darkmode = str(darkdetect.theme()).lower() == 'dark' # have to initialize; str catches None on some systems
+        self.darkmode = str(darkdetect.theme()).lower() in ['none','dark'] # have to initialize; str catches None on some systems
 
         pg.setConfigOptions(imageAxisOrder="row-major")
         self.clipboard = clipboard
