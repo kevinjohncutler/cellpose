@@ -57,7 +57,7 @@ class resdown(nn.Module):
     def __init__(self, in_channels, out_channels, sz, dim):
         super().__init__()
         self.conv = nn.Sequential()
-        self.proj  = batchconv0(in_channels, out_channels, 1, dim)
+        self.proj = batchconv0(in_channels, out_channels, 1, dim)
         for t in range(4):
             if t==0:
                 self.conv.add_module('conv_%d'%t, batchconv(in_channels, out_channels, sz, dim))

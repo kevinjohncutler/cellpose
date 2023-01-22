@@ -1110,7 +1110,7 @@ class ArcCosDotLoss(torch.nn.Module):
 
     def forward(self,x,y,w,mask):
         eps = 1e-12
-        denom = torch.multiply(torch.linalg.norm(x,dim=1),torch.linalg.norm(y,dim=1))+eps
+        denom = torch.multiply(torch_norm(x,dim=1),torch_norm(y,dim=1))+eps
         dot = torch.sum(torch.stack([x[:,k]*y[:,k] for k in range(x.shape[1])],axis=1),axis=1)
         phasediff = torch.acos(torch.clip(dot/denom,-0.999999,0.999999))/3.141549
         return torch.mean((torch.square(phasediff[mask]))*w[mask])
@@ -1120,11 +1120,18 @@ class NormLoss(torch.nn.Module):
         super().__init__()
 
     def forward(self,y,Y,w,mask):
-        ny = torch.linalg.norm(y,dim=1,keepdim=False)/5.
-        nY = torch.linalg.norm(Y,dim=1,keepdim=False)/5.
+        ny = torch_norm(y,dim=1,keepdim=False)/5.
+        nY = torch_norm(Y,dim=1,keepdim=False)/5.
         diff = (ny-nY)
         return torch.mean(torch.square(diff[mask])*w[mask])
 
+def torch_norm(a,dim=1,keepdim=False):
+    if ARM: 
+        #torch.linalg.norm not implemented on MPS yet
+        # this is the fastest I have tested but still slow in comparison 
+        return (a*a).sum(dim=dim,keepdim=keepdim).sqrt()
+    else:
+        return torch.linalg.norm(a,dim=dim,keepdim=keepdim)
 
 class DivergenceLoss(torch.nn.Module):
     def __init__(self):

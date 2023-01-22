@@ -109,12 +109,13 @@ class Cellpose():
         self.diam_mean = 30. #default for any cyto model 
         nuclear = 'nuclei' in model_type
         bacterial = ('bact' in model_type) or ('worm' in model_type) 
+        plant = 'plant' in model_type
         
         if nuclear:
             self.diam_mean = 17. 
-        elif bacterial:
+        elif bacterial or plant:
             #self.diam_mean = 0.
-            net_avg = False # No bacterial or omni models have additional models
+            net_avg = False # No bacterial, plant, or omni models have additional models
         
         if not net_avg:
             self.pretrained_model = self.pretrained_model[0]
@@ -405,14 +406,15 @@ class CellposeModel(UnetModel):
                 models_logger.warning('pretrained model has incorrect path')
             models_logger.info(f'>>{pretrained_model_string}<< model set to be used')
             
-            nuclear = 'nuclei' in pretrained_model_string
-            bacterial = ('bact' in pretrained_model_string) or ('worm' in pretrained_model_string) 
-            
+            nuclear = 'nuclei' in model_type
+            bacterial = ('bact' in model_type) or ('worm' in model_type) 
+            plant = 'plant' in model_type
+
             if nuclear:
                 self.diam_mean = 17. 
-            elif bacterial:
+            elif bacterial or plant:
                 #self.diam_mean = 0.
-                net_avg = False #'bact' models has no 1,2,3 yet, nor do any omni models 
+                net_avg = False # No bacterial, plant, or omni models have additional models
 
             # set omni flag to true if the name contains it
             self.omni = 'omni' in os.path.splitext(Path(pretrained_model_string).name)[0]
