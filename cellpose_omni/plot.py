@@ -26,7 +26,7 @@ except:
 
 # modified to use sinebow color
 import colorsys
-def dx_to_circ(dP,transparency=False,mask=None,sinebow=True):
+def dx_to_circ(dP,transparency=False,mask=None,sinebow=True,norm=True):
     """ dP is 2 x Y x X => 'optic' flow representation 
     
     Parameters
@@ -44,7 +44,10 @@ def dx_to_circ(dP,transparency=False,mask=None,sinebow=True):
     """
     
     dP = np.array(dP)
-    mag = np.clip(transforms.normalize99(np.sqrt(np.sum(dP**2,axis=0)),omni=OMNI_INSTALLED), 0, 1.)
+    mag = np.sqrt(np.sum(dP**2,axis=0))
+    if norm:
+        mag = np.clip(transforms.normalize99(mag,omni=OMNI_INSTALLED), 0, 1.)
+    
     angles = np.arctan2(dP[1], dP[0])+np.pi
     if sinebow:
         a = 2
@@ -66,7 +69,7 @@ def dx_to_circ(dP,transparency=False,mask=None,sinebow=True):
     return im
 
 def show_segmentation(fig, img, maski, flowi, bdi=None, channels=[0,0], file_name=None, omni=False, 
-                      seg_norm=False, bg_color=None, channel_axis=-1):
+                      seg_norm=False, bg_color=None, channel_axis=-1, display=True):
     """ plot segmentation results (like on website)
     
     Can save each panel of figure with file_name option. Use channels option if
@@ -104,9 +107,7 @@ def show_segmentation(fig, img, maski, flowi, bdi=None, channels=[0,0], file_nam
         
 
     """
-    if not MATPLOTLIB_ENABLED:
-        raise ImportError("matplotlib not installed, install with 'pip install matplotlib'")
-    ax = fig.add_subplot(1,4,1)
+    
     img0 = img.copy()
     img0 = transforms.reshape(img0,channels=channels) # this makes sure channel axis is last 
     
@@ -117,11 +118,6 @@ def show_segmentation(fig, img, maski, flowi, bdi=None, channels=[0,0], file_nam
 
     img0 = (transforms.normalize99(img0,omni=omni)*(2**8-1)).astype(np.uint8)
     
-    
-    ax.imshow(img0)
-    ax.set_title('original image')
-    ax.axis('off')
-
     if bdi is None:
         outlines = utils.masks_to_outlines(maski)
     else:
@@ -150,33 +146,46 @@ def show_segmentation(fig, img, maski, flowi, bdi=None, channels=[0,0], file_nam
     else:
         overlay = mask_overlay(img0, maski)
 
-    ax = fig.add_subplot(1,4,2)
-    outX, outY = np.nonzero(outlines)
-    imgout= img0.copy()
-    imgout[outX, outY] = np.array([255,0,0]) # pure red
-
-    ax.imshow(imgout)
-    ax.set_title('predicted outlines')
-    ax.axis('off')
-
-    ax = fig.add_subplot(1,4,3)
-    ax.imshow(overlay)
-    ax.set_title('predicted masks')
-    ax.axis('off')
-
-    ax = fig.add_subplot(1,4,4)
-    if bg_color is not None:
-        ax.imshow(np.ones_like(flowi)*bg_color)
-    
-    ax.imshow(flowi)
-    ax.set_title('predicted flow field')
-    ax.axis('off')
+        
 
     if file_name is not None:
         save_path = os.path.splitext(file_name)[0]
         io.imsave(save_path + '_overlay.jpg', overlay)
         io.imsave(save_path + '_outlines.jpg', imgout)
         io.imsave(save_path + '_flows.jpg', flowi)
+        
+        
+    if display:
+        if not MATPLOTLIB_ENABLED:
+            raise ImportError("matplotlib not installed, install with 'pip install matplotlib'")
+        ax = fig.add_subplot(1,4,1)
+        ax.imshow(img0)
+        ax.set_title('original image')
+        ax.axis('off')
+        ax = fig.add_subplot(1,4,2)
+        outX, outY = np.nonzero(outlines)
+        imgout= img0.copy()
+        imgout[outX, outY] = np.array([255,0,0]) # pure red
+
+        ax.imshow(imgout)
+        ax.set_title('predicted outlines')
+        ax.axis('off')
+
+        ax = fig.add_subplot(1,4,3)
+        ax.imshow(overlay)
+        ax.set_title('predicted masks')
+        ax.axis('off')
+
+        ax = fig.add_subplot(1,4,4)
+        if bg_color is not None:
+            ax.imshow(np.ones_like(flowi)*bg_color)
+
+        ax.imshow(flowi)
+        ax.set_title('predicted flow field')
+        ax.axis('off')
+    
+    else:
+        return img1, outlines, overlay 
 
 def mask_rgb(masks, colors=None):
     """ masks in random rgb colors

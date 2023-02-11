@@ -111,8 +111,7 @@ def main(omni_CLI=False):
     output_args.add_argument('--save_png', action='store_true', help='save masks as png')
     output_args.add_argument('--save_tif', action='store_true', help='save masks as tif')
     output_args.add_argument('--no_npy', action='store_true', help='suppress saving of npy')
-    output_args.add_argument('--savedir',
-                        default=None, type=str, help='folder to which segmentation results will be saved (defaults to input image directory)')
+    output_args.add_argument('--savedir', default=None, type=str, help='folder to which segmentation results will be saved (defaults to input image directory)')
     output_args.add_argument('--dir_above', action='store_true', help='save output folders adjacent to image folder instead of inside it (off by default)')
     output_args.add_argument('--in_folders', action='store_true', help='flag to save output in folders (off by default)')
     output_args.add_argument('--save_flows', action='store_true', help='whether or not to save RGB images of flows when masks are saved (disabled by default)')
@@ -148,10 +147,12 @@ def main(omni_CLI=False):
                         default=100, type=int, help='number of epochs to skip between saves. Default: %(default)s')
     training_args.add_argument('--save_each', action='store_true', help='save the model under a different filename per --save_every epoch for later comparsion')
     training_args.add_argument('--RAdam', action='store_true', help='use RAdam instead of SGD')
-    training_args.add_argument('--checkpoint', action='store_true', help='turn on checkpoints to reduce memeory usage')
-    training_args.add_argument('--dropout',action='store_true', help='Use dropoint in training')
+    training_args.add_argument('--checkpoint', action='store_true', help='turn on checkpoints to reduce memory usage')
+    training_args.add_argument('--dropout',action='store_true', help='Use dropout in training')
     training_args.add_argument('--tyx',
                         default=None, type=str, help='list of yx, zyx, or tyx dimensions for training')
+    training_args.add_argument('--links',action='store_true', help='Search and use link files for multi-label objects.')
+    
     
     # misc settings
     parser.add_argument('--verbose', action='store_true', help='flag to output extra information (e.g. diameter metrics) for debugging and fine-tuning parameters')
@@ -394,8 +395,9 @@ def main(omni_CLI=False):
                 szmean = args.diameter # respect user defined, defaults to 30
                 
             test_dir = None if len(args.test_dir)==0 else args.test_dir
-            output = io.load_train_test_data(args.dir, test_dir, img_filter, args.mask_filter, args.unet, args.look_one_level_down, args.omni)
-            images, labels, image_names, test_images, test_labels, image_names_test = output
+            output = io.load_train_test_data(args.dir, test_dir, img_filter, args.mask_filter, 
+                                             args.unet, args.look_one_level_down, args.omni, args.links)
+            images, labels, links, image_names, test_images, test_labels, test_links, image_names_test = output
 
             # training with all channels
             if args.all_channels:
@@ -413,7 +415,9 @@ def main(omni_CLI=False):
                 else: 
                     nchan = 1
                 channels = None 
-            else:
+            else: 
+                # defaulting to 2 channels is a strange choice
+                # perhaps a vestige of cyto2 with nuclei+membrane as a subset    
                 nchan = 2
 
             
@@ -473,8 +477,9 @@ def main(omni_CLI=False):
             
             # train segmentation model
             if args.train:
-                cpmodel_path = model.train(images, labels, train_files=image_names,
-                                           test_data=test_images, test_labels=test_labels, test_files=image_names_test,
+                cpmodel_path = model.train(images, labels, links, train_files=image_names,
+                                           test_data=test_images, test_labels=test_labels, 
+                                           test_links=test_links, test_files=image_names_test,
                                            learning_rate=args.learning_rate, channels=channels,
                                            save_path=os.path.realpath(args.dir), save_every=args.save_every,
                                            save_each=args.save_each,

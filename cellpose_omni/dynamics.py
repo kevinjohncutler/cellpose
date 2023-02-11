@@ -305,7 +305,7 @@ def masks_to_flows(masks, use_gpu=False, device=None):
 # It is possible that flows can be eliminated in place of the distance field. The current distance field may not be smooth 
 # enough, or maybe the network really does require the flow field prediction to work well. But in 3D, it will be a huge
 # advantage if the network could predict just the distance (and boudnary) classes and not 3 extra flow components. 
-def labels_to_flows(labels, files=None, use_gpu=False, device=None, redo_flows=False, dim=2):
+def labels_to_flows(labels, files=None, use_gpu=False, device=None, redo_flows=False, links=None, dim=2):
     """ convert labels (list of masks or flows) to flows for training model 
 
     if files is not None, flows are saved to files to be reused

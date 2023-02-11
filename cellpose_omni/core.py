@@ -22,8 +22,6 @@ try:
 except:
     MXNET_ENABLED = False
 
-
-
 try:
     import torch
     from torch.cuda.amp import autocast, GradScaler
@@ -890,8 +888,8 @@ class UnetModel():
                 self.criterion2 = gluon.loss.SigmoidBinaryCrossEntropyLoss()
 
     # Restored defaults. Need to make sure rescale is properly turned off and omni turned on when using CLI. 
-    def _train_net(self, train_data, train_labels, test_data=None, test_labels=None,
-                   save_path=None, save_every=100, save_each=False,
+    def _train_net(self, train_data, train_labels, train_links, test_data=None, test_labels=None,
+                   test_links=None, save_path=None, save_every=100, save_each=False,
                    learning_rate=0.2, n_epochs=500, momentum=0.9, weight_decay=0.00001, 
                    SGD=True, batch_size=8, nimg_per_epoch=None, rescale=True, netstr=None, 
                    do_autocast=False, tyx=None): 
@@ -934,6 +932,10 @@ class UnetModel():
         
         # compute average cell diameter
         if rescale:
+            if links is not None:
+                core_logger.warning("""WARNING: rescaling not updated for multi-label objects. 
+                                    Check rescaling manually for the right diameter.""")
+                
             diam_train = np.array([utils.diameters(train_labels[k],omni=self.omni)[0] 
                                    for k in range(len(train_labels))])
             diam_train[diam_train<5] = 5.
@@ -998,10 +1000,18 @@ class UnetModel():
                 inds = rperm[ibatch:ibatch+batch_size]
                 rsc = diam_train[inds] / self.diam_mean if rescale else np.ones(len(inds), np.float32)
                 # now passing in the full train array, need the labels for distance field
-                imgi, lbl, scale = transforms.random_rotate_and_resize(
-                                        [train_data[i] for i in inds], Y=[train_labels[i] for i in inds],
-                                        rescale=rsc, scale_range=scale_range, unet=self.unet, tyx=tyx, inds=inds,
-                                        omni=self.omni, dim=self.dim, nchan=self.nchan, nclasses=self.nclasses)
+                imgi, lbl, scale = transforms.random_rotate_and_resize([train_data[i] for i in inds], 
+                                                                       Y=[train_labels[i] for i in inds],
+                                                                       links=[train_links[i] for i in inds],
+                                                                       rescale=rsc, 
+                                                                       scale_range=scale_range, 
+                                                                       unet=self.unet, 
+                                                                       tyx=tyx, 
+                                                                       inds=inds,
+                                                                       omni=self.omni, 
+                                                                       dim=self.dim, 
+                                                                       nchan=self.nchan, 
+                                                                       nclasses=self.nclasses)
                 if self.unet and lbl.shape[1]>1 and rescale:
                     lbl[:,1] /= diam_batch[:,np.newaxis,np.newaxis]**2
                 train_loss = self._train_step(imgi, lbl)
@@ -1017,10 +1027,18 @@ class UnetModel():
                     for ibatch in range(0,len(test_data),batch_size):
                         inds = rperm[ibatch:ibatch+batch_size]
                         rsc = diam_test[inds] / self.diam_mean if rescale else np.ones(len(inds), np.float32)
-                        imgi, lbl, scale = transforms.random_rotate_and_resize(
-                                            [test_data[i] for i in inds], Y=[test_labels[i] for i in inds], 
-                                            scale_range=0., rescale=rsc, unet=self.unet, tyx=tyx, inds=inds, 
-                                            omni=self.omni, dim=self.dim, nchan=self.nchan, nclasses=self.nclasses) 
+                        imgi, lbl, scale = transforms.random_rotate_and_resize([test_data[i] for i in inds], 
+                                                                               Y=[test_labels[i] for i in inds], 
+                                                                               links=[test_links[i] for i in inds],
+                                                                               rescale=rsc, 
+                                                                               scale_range=0., 
+                                                                               unet=self.unet, 
+                                                                               tyx=tyx, 
+                                                                               inds=inds,
+                                                                               omni=self.omni, 
+                                                                               dim=self.dim, 
+                                                                               nchan=self.nchan, 
+                                                                               nclasses=self.nclasses) 
                         if self.unet and lbl.shape[1]>1 and rescale:
                             lbl[:,1] *= scale[0]**2
 

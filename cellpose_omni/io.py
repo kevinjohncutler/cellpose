@@ -6,6 +6,8 @@ import tifffile
 import logging, pathlib, sys
 from pathlib import Path
 
+from csv import reader
+
 try:
     from omnipose.utils import format_labels
     import ncolor
@@ -63,6 +65,30 @@ def check_dir(path):
     if not os.path.isdir(path):
         # os.mkdir(path)
         os.makedirs(path,exist_ok=True)
+        
+        
+def load_links(filename):
+    """
+    Read a txt or csv file with label links. 
+    These should look like:
+        1,2
+        1,3
+        4,7
+        6,19
+        .
+        .
+        .
+    Returns links as a set of tuples. 
+    """
+    if os.path.exists(filename):
+        links = set()
+        file = open(filename,"r")
+        lines = reader(file)
+        for l in lines: 
+            links.add(tuple([int(num) for num in l]))
+        return links
+    else:
+        return []
 
 def outlines_to_text(base, outlines):
     with open(base + '_cp_outlines.txt', 'w') as f:
@@ -142,7 +168,7 @@ def getname(path,suffix=''):
 # and simplifications made because we can safely assume how output was saved.
 # the one place it is needed internally 
 def get_label_files(img_names, label_filter='_cp_masks', img_filter='', ext=None,
-                    dir_above=False, subfolder='', parent=None, flows=False):
+                    dir_above=False, subfolder='', parent=None, flows=False, links=False):
     """
     Get the corresponding labels and flows for the given file images. If no extension is given,
     looks for TIF, TIFF, and PNG. If multiple are found, the first in the list is returned. 
@@ -166,6 +192,10 @@ def get_label_files(img_names, label_filter='_cp_masks', img_filter='', ext=None
         the name of the subfolder where the labels are stored
     parent: str
         parent folder or list of folders where masks are stored, if different from images 
+    flows: Bool
+        whether or not to search for and return stored flows
+    links: bool
+        whether or not to search for and return stored link files 
      
     Returns
     -------
@@ -187,7 +217,6 @@ def get_label_files(img_names, label_filter='_cp_masks', img_filter='', ext=None
     elif not isinstance(label_folder, list):
         parent = [parent]*nimg
     
-    
     if ext is None:
         label_paths = []
         extensions = ['.tif','.tiff','.png'] #order preference comes here 
@@ -196,7 +225,7 @@ def get_label_files(img_names, label_filter='_cp_masks', img_filter='', ext=None
             paths = [os.path.join(p,subfolder,b+label_filter+ext) for ext in extensions]
             found = [os.path.exists(path) for path in paths]
             nfound = np.sum(found)
-
+            
             if nfound == 0:
                 io_logger.warning('No TIF, TIFF, or PNG labels of type {} found for image {}.'.format(label_filter, b))
             else:
@@ -204,16 +233,17 @@ def get_label_files(img_names, label_filter='_cp_masks', img_filter='', ext=None
                 label_paths.append(paths[idx])
                 if nfound > 1:
                     io_logger.warning("""Multiple labels of type {} also 
-                          'found for image {}. Deferring to {} label.""".format(label_filter, b, extensions[idx]))
+                    found for image {}. Deferring to {} label.""".format(label_filter, b, extensions[idx]))
             
         
     else:
         label_paths = [os.path.join(p,subfolder,b+label_filter+ext) for p,b in zip(parent,label_base)]
-        
-    # this allows both flow name conventions to exist in one folder 
+    
+    ret = [label_paths]
+
     if flows:
         flow_paths = []
-        imfilters = ['',img_filter] 
+        imfilters = ['',img_filter] # this allows both flow name conventions to exist in one folder 
 
         for p,b in zip(parent,label_base):            
             paths = [os.path.join(p,subfolder,b+imf+'_flows.tif') for imf in imfilters]
@@ -227,22 +257,48 @@ def get_label_files(img_names, label_filter='_cp_masks', img_filter='', ext=None
                 idx = np.nonzero(found)[0][0]
                 flow_paths.append(paths[idx])
         
-        return label_paths, flow_paths
+        ret += [flow_paths]
         
-    else:
-        return label_paths
+    if links:
+        link_paths = []
+        imfilters = ['',img_filter] # this allows both flow name conventions to exist in one folder 
+        
+        for p,b in zip(parent,label_base):            
+            paths = [os.path.join(p,subfolder,b+'_links.txt') for imf in imfilters]
+            found = [os.path.exists(path) for path in paths]
+            nfound = np.sum(found)
+
+            if nfound == 0:
+                link_paths.append(None)
+            else:
+                idx = np.nonzero(found)[0][0]
+                link_paths.append(paths[idx])
+            
+        ret += [link_paths]
+        
+    return (*ret,)
 
 # edited to allow omni to not read in training flows if any exist; flows computed on-the-fly and code expects this 
-def load_train_test_data(train_dir, test_dir=None, image_filter='', mask_filter='_masks', unet=False, look_one_level_down=True, omni=False):
+# futher edited to automatically find link files for boundary or timelapse flow generation 
+def load_train_test_data(train_dir, test_dir=None, image_filter='', mask_filter='_masks', 
+                         unet=False, look_one_level_down=True, omni=False, do_links=True):
+    """
+    Loads the training and optional test data for training runs.
+    """
+    
     image_names = get_image_files(train_dir, mask_filter, image_filter, look_one_level_down)
     nimg = len(image_names)
     images = [imread(image_names[n]) for n in range(nimg)]
 
     # training data
-    label_names, flow_names = get_label_files(image_names, label_filter=mask_filter, img_filter=image_filter, flows=True)
+    label_names, flow_names, link_names = get_label_files(image_names, 
+                                                          label_filter=mask_filter, 
+                                                          img_filter=image_filter, 
+                                                          flows=True, links=True)
     nimg = len(image_names)
-    print(nimg,label_names,flow_names)
     labels = [imread(l) for l in label_names]
+    links = [load_links(l) for l in link_names]
+    
     if flow_names is not None and not unet and not omni:
         for n in range(nimg):
             flows = imread(flow_names[n])
@@ -255,12 +311,15 @@ def load_train_test_data(train_dir, test_dir=None, image_filter='', mask_filter=
     test_images, test_labels, image_names_test = None, None, None
     if test_dir is not None:
         image_names_test = get_image_files(test_dir, mask_filter, image_filter, look_one_level_down)
-        label_names_test, flow_names_test = get_label_files(image_names_test, label_filter=mask_filter, img_filter=image_filter, flows=True)
-        
+        label_names_test, flow_names_test, link_names_test = get_label_files(image_names_test, 
+                                                                            label_filter=mask_filter, 
+                                                                            img_filter=image_filter, 
+                                                                            flows=True, links=True)
         
         nimg = len(image_names_test)
         test_images = [imread(image_names_test[n]) for n in range(nimg)]
         test_labels = [imread(label_names_test[n]) for n in range(nimg)]
+        test_links = [load_links(link_names_test[n]) for n in range(nimg)]
         if flow_names_test is not None and not unet:
             for n in range(nimg):
                 flows = imread(flow_names_test[n])
@@ -268,7 +327,13 @@ def load_train_test_data(train_dir, test_dir=None, image_filter='', mask_filter=
                     test_labels[n] = np.concatenate((test_labels[n][np.newaxis,:,:], flows), axis=0) 
                 else:
                     test_labels[n] = flows
-    return images, labels, image_names, test_images, test_labels, image_names_test
+    
+    # Allow disabling the links even if link files were found 
+    if not do_links:
+        links = None
+        test_links = None
+    
+    return images, labels, links, image_names, test_images, test_labels, test_links, image_names_test
 
 
 

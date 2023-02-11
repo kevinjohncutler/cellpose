@@ -29,7 +29,7 @@ omni_deps = [
         'scikit-learn',
         'edt',
         'torch_optimizer', 
-        'ncolor'
+        'ncolor>=1.2.1'
         # 'ncolor@git+https://github.com/kevinjohncutler/ncolor#egg=ncolor'
         ]
 

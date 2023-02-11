@@ -939,13 +939,13 @@ class CellposeModel(UnetModel):
         return loss
 
 
-    def train(self, train_data, train_labels, train_files=None, 
-              test_data=None, test_labels=None, test_files=None,
+    def train(self, train_data, train_labels, train_links=None, train_files=None, 
+              test_data=None, test_labels=None, test_links=None, test_files=None,
               channels=None, channel_axis=0, normalize=True, 
               save_path=None, save_every=100, save_each=False,
               learning_rate=0.2, n_epochs=500, momentum=0.9, SGD=True,
               weight_decay=0.00001, batch_size=8, nimg_per_epoch=None,
-              rescale=True, min_train_masks=5, netstr=None, tyx=None, bd=False):
+              rescale=True, min_train_masks=5, netstr=None, tyx=None):
 
         """ train network with images train_data 
         
@@ -958,6 +958,11 @@ class CellposeModel(UnetModel):
             train_labels: list of arrays (2D or 3D)
                 labels for train_data, where 0=no masks; 1,2,...=mask labels
                 can include flows as additional images
+                
+            train_links: list of label links
+                These lists of label pairs define which labels are "linked",
+                i.e. should be treated as part of the same object. This is how
+                Omnipose handles internal/self-contact boundaries during training. 
 
             train_files: list of strings
                 file names for images in train_data (to save flows for future runs)
@@ -966,9 +971,11 @@ class CellposeModel(UnetModel):
                 images for testing
 
             test_labels: list of arrays (2D or 3D)
-                labels for test_data, where 0=no masks; 1,2,...=mask labels; 
-                can include flows as additional images
+                See train_labels. 
         
+            test_links: list of label links
+                See train_links. 
+            
             test_files: list of strings
                 file names for images in test_data (to save flows for future runs)
 
@@ -1017,13 +1024,11 @@ class CellposeModel(UnetModel):
             tyx: int, tuple (default, 224x224 in 2D)
                 size of image patches used for training
                 
-            bd: bool (default, False)
-                treat ND masks not as label matrices but as N-connected boundaries = 2,
-                internal voxels = 1, and background = 0
 
         """
         if rescale:
             models_logger.info(f'Training with rescale = {rescale:.2f}')
+        # images may need some dimension shuffling to conform to standard, this is link-independent 
         train_data, train_labels, test_data, test_labels, run_test = transforms.reshape_train_test(train_data, train_labels,  
                                                                                                    test_data, test_labels,
                                                                                                    channels, channel_axis,
@@ -1033,22 +1038,24 @@ class CellposeModel(UnetModel):
         # if not, flows computed, returned with labels as train_flows[i][0]
         labels_to_flows = dynamics.labels_to_flows if not (self.omni and OMNI_INSTALLED) else omnipose.core.labels_to_flows
         
-        # do not precompute flows for omnipose 
+        # Omnipose needs to recompute labels on-the-fly after image warping
         if self.omni and OMNI_INSTALLED:
             models_logger.info('No precomuting flows with Omnipose. Computed during training.')
-            # here is where we can handle a bit of the mask formatting for boundary masks
-            if not bd:
+            
+            # We assume that if links are given, labels are properly formatted as 0,1,2,...,N
+            # might be worth implementing a remapping for the links just in case...
+            if train_links is None:
                 train_labels = [omnipose.utils.format_labels(label) for label in train_labels]
-            # else:
-                
+            
+            # nmasks is inflated when using multi-label objects, so keep that in mind if you care about min_train_masks 
             nmasks = np.array([label.max() for label in train_labels])
 
         else:
-            train_labels = labels_to_flows(train_labels, files=train_files, use_gpu=self.gpu, device=self.device, dim=self.dim)
+            train_labels = labels_to_flows(train_labels, train_links, files=train_files, use_gpu=self.gpu, device=self.device, dim=self.dim)
             nmasks = np.array([label[0].max() for label in train_labels])
 
         if run_test:
-            test_labels = labels_to_flows(test_labels, files=test_files, use_gpu=self.gpu, device=self.device)
+            test_labels = labels_to_flows(test_labels, test_links, files=test_files, use_gpu=self.gpu, device=self.device, dim=self.dim)
         else:
             test_labels = None
 
@@ -1061,8 +1068,8 @@ class CellposeModel(UnetModel):
 
         if channels is None:
             models_logger.warning('channels is set to None, input must therefore have nchan channels (default is 2)')
-        model_path = self._train_net(train_data, train_labels, 
-                                     test_data=test_data, test_labels=test_labels,
+        model_path = self._train_net(train_data, train_labels, train_links, 
+                                     test_data=test_data, test_labels=test_labels, test_links=test_links, 
                                      save_path=save_path, save_every=save_every, save_each=save_each,
                                      learning_rate=learning_rate, n_epochs=n_epochs, 
                                      momentum=momentum, weight_decay=weight_decay, 

@@ -12,6 +12,12 @@ import torch.utils.checkpoint as cp
 
 from . import transforms, io, dynamics, utils
 
+CONVND = False
+# CONVND = True
+
+if CONVND:
+    from .convNd import convNd
+
 import platform  
 ARM = 'arm' in platform.processor() # the backend chack for apple silicon does not work on intel macs
 # ARM = torch.backends.mps.is_available() and ARM
@@ -26,31 +32,41 @@ torch_GPU = torch.device('mps') if ARM else torch.device('cuda')
 torch_CPU = torch.device('cpu')
 
 sz = 3 #kernel size, works as xy or xyz/xyt equally well 
-
+WEIGHT = 1e-4
+BIAS = 1e-4
 def batchconv(in_channels, out_channels, sz, dim):
     if dim==2:
         return nn.Sequential(
             nn.BatchNorm2d(in_channels, eps=1e-5),
             nn.ReLU(inplace=True),
+            convNd(in_channels, out_channels, num_dims=dim, kernel_size=sz, stride=1, padding=sz//2,
+                  kernel_initializer=lambda x: torch.nn.init.constant_(x, WEIGHT), 
+                  bias_initializer=lambda x: torch.nn.init.constant_(x, BIAS)) if CONVND else 
             nn.Conv2d(in_channels, out_channels, sz, padding=sz//2),
         )
     elif dim==3:
         return nn.Sequential(
             nn.BatchNorm3d(in_channels, eps=1e-5),
             nn.ReLU(inplace=True),
+            convNd(in_channels, out_channels, dim, sz, stride=1, padding=sz//2) if CONVND else 
             nn.Conv3d(in_channels, out_channels, sz, padding=sz//2),
+
         )  
 
 def batchconv0(in_channels, out_channels, sz, dim):
     if dim==2:
         return nn.Sequential(
             nn.BatchNorm2d(in_channels, eps=1e-5),
+            convNd(in_channels, out_channels, num_dims=dim, kernel_size=sz, stride=1, padding=sz//2,
+                  kernel_initializer=lambda x: torch.nn.init.constant_(x, WEIGHT), 
+                  bias_initializer=lambda x: torch.nn.init.constant_(x, BIAS)) if CONVND else 
             nn.Conv2d(in_channels, out_channels, sz, padding=sz//2),
         )
     elif dim==3:
         return nn.Sequential(
             nn.BatchNorm3d(in_channels, eps=1e-5),
-            nn.Conv3d(in_channels, out_channels, sz, padding=sz//2),
+            convNd(in_channels, out_channels, dim, sz, stride=1, padding=sz//2) if CONVND 
+            else nn.Conv3d(in_channels, out_channels, sz, padding=sz//2),
         )  
 
 class resdown(nn.Module):
@@ -121,7 +137,7 @@ class batchconvstyle(nn.Module):
         self.concatenation = concatenation
         self.conv = batchconv(in_channels, out_channels, sz, dim)
         if concatenation:
-            self.full = nn.Linear(style_channels, out_channels*2)
+            self.full = nn.Linear(style_channels, out_channels*2) 
         else:
             self.full = nn.Linear(style_channels, out_channels)
         self.dim = dim
@@ -151,6 +167,7 @@ class resup(nn.Module):
         self.proj  = batchconv0(in_channels, out_channels, 1, dim=dim)
 
     def forward(self, x, y, style, mkldnn=False):
+        # print('shape',self.conv[0](x).shape,y.shape)
         x = self.proj(x) + self.conv[1](style, self.conv[0](x) + y, mkldnn=mkldnn)
         x = x + self.conv[3](style, self.conv[2](style, x, mkldnn=mkldnn), mkldnn=mkldnn)
         return x
@@ -243,8 +260,11 @@ class CPnet(nn.Module):
         
         self.do_dropout = dropout
         if self.do_dropout:
-            self.dropout = nn.Dropout(0.1) # make this toggle on with omni
+            self.dropout = nn.Dropout(0.1) # make this toggle on with omni?
     
+    # for layer in self.children():
+    #     if hasattr(layer, 'reset_parameters'):
+    #         layer.reset_parameters()
     # @autocast() #significant decrease in GPU memory usage (e.g. 19.8GB vs 11.8GB for a particular test run)
     def forward(self, data):
         if self.mkldnn:

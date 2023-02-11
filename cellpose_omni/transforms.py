@@ -775,7 +775,7 @@ def pad_image_ND(img0, div=16, extra=1, dim=2):
     return I, subs
 
 
-def random_rotate_and_resize(X, Y=None, scale_range=1., gamma_range=0.5, tyx=None, 
+def random_rotate_and_resize(X, Y=None, links=None, scale_range=1., gamma_range=0.5, tyx=None, 
                              do_flip=True, rescale=None, unet=False,
                              inds=None, omni=False, dim=2, nchan=1, nclasses=3, kernel_size=2):
     """ augmentation by random rotation and resizing
@@ -792,6 +792,10 @@ def random_rotate_and_resize(X, Y=None, scale_range=1., gamma_range=0.5, tyx=Non
             of Y is always nearest-neighbor interpolated (assumed to be masks or 0-1 representation).
             If Y.shape[0]==3 and not unet, then the labels are assumed to be [cell probability, Y flow, X flow]. 
             If unet, second channel is dist_to_bound.
+        
+        links: list of label links
+            lists of label pairs linking parts of multi-label object together
+            this is how omnipose gets around boudary artifacts druing image warps 
 
         scale_range: float (optional, default 1.0)
             Range of resizing of images for augmentation. Images are resized by
@@ -833,11 +837,11 @@ def random_rotate_and_resize(X, Y=None, scale_range=1., gamma_range=0.5, tyx=Non
         n = 16
         base = kernel_size
         L = max(round(224/(base**4)),1)*(base**4) # rounds 224 up to the right multiple to work for base 
-        # not sure if 4 downsampling or 3, but the "multiple of 16" elsewhere makesme think it must be 4, 
+        # not sure if 4 downsampling or 3, but the "multiple of 16" elsewhere makes me think it must be 4, 
         # but it appears that multiple of 8 actually works? maybe the n=16 above conflates my experiments in 3D
         if tyx is None:
             tyx = (L,)*dim if dim==2 else (8*n,)+(8*n,)*(dim-1) #must be divisible by 2**3 = 8
-        return omnipose.core.random_rotate_and_resize(X, Y=Y, scale_range=scale_range, gamma_range=gamma_range,
+        return omnipose.core.random_rotate_and_resize(X, Y=Y, links=links, scale_range=scale_range, gamma_range=gamma_range,
                                                       tyx=tyx, do_flip=do_flip, rescale=rescale, inds=inds, 
                                                       nchan=nchan, nclasses=nclasses)
     else:
