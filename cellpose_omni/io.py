@@ -80,7 +80,7 @@ def load_links(filename):
         .
     Returns links as a set of tuples. 
     """
-    if os.path.exists(filename):
+    if filename is not None and os.path.exists(filename):
         links = set()
         file = open(filename,"r")
         lines = reader(file)
@@ -252,7 +252,8 @@ def get_label_files(img_names, label_filter='_cp_masks', img_filter='', ext=None
 
             if nfound == 0:
                 io_logger.info('not all flows are present, will run flow generation for all images')
-                return label_paths, None
+                flow_paths = None
+                break
             else:
                 idx = np.nonzero(found)[0][0]
                 flow_paths.append(paths[idx])
@@ -275,7 +276,6 @@ def get_label_files(img_names, label_filter='_cp_masks', img_filter='', ext=None
                 link_paths.append(paths[idx])
             
         ret += [link_paths]
-        
     return (*ret,)
 
 # edited to allow omni to not read in training flows if any exist; flows computed on-the-fly and code expects this 
@@ -290,7 +290,6 @@ def load_train_test_data(train_dir, test_dir=None, image_filter='', mask_filter=
     nimg = len(image_names)
     images = [imread(image_names[n]) for n in range(nimg)]
 
-    # training data
     label_names, flow_names, link_names = get_label_files(image_names, 
                                                           label_filter=mask_filter, 
                                                           img_filter=image_filter, 
@@ -308,7 +307,7 @@ def load_train_test_data(train_dir, test_dir=None, image_filter='', mask_filter=
                 labels[n] = flows
             
     # testing data
-    test_images, test_labels, image_names_test = None, None, None
+    test_images, test_labels, test_links, image_names_test = [None]*4
     if test_dir is not None:
         image_names_test = get_image_files(test_dir, mask_filter, image_filter, look_one_level_down)
         label_names_test, flow_names_test, link_names_test = get_label_files(image_names_test, 
