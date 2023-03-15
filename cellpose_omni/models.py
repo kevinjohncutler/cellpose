@@ -1,7 +1,10 @@
 import os, sys, time, shutil, tempfile, datetime, pathlib, subprocess
 from pathlib import Path
 import numpy as np
-from tqdm import trange, tqdm
+# from tqdm import trange, tqdm
+from tqdm.auto import tqdm, trange 
+
+
 from urllib.parse import urlparse
 import torch
 from torch import nn, distributed
@@ -138,7 +141,8 @@ class Cellpose():
     def eval(self, x, batch_size=8, channels=None, channel_axis=None, z_axis=None,
              invert=False, normalize=True, diameter=30., do_3D=False, anisotropy=None,
              net_avg=True, augment=False, tile=True, tile_overlap=0.1, resample=True, 
-             interp=True, cluster=False, boundary_seg=False, flow_threshold=0.4, mask_threshold=0.0, 
+             interp=True, cluster=False, boundary_seg=False, affinity_seg=False, 
+             flow_threshold=0.4, mask_threshold=0.0, 
              cellprob_threshold=None, dist_threshold=None, diam_threshold=12., min_size=15,
              stitch_threshold=0.0, rescale=None, progress=None, omni=False, verbose=False,
              transparency=False, model_loaded=False):
@@ -320,6 +324,8 @@ class Cellpose():
                                             flow_threshold=flow_threshold, 
                                             mask_threshold=mask_threshold,
                                             diam_threshold=diam_threshold,
+                                            boundary_seg=boundary_seg, 
+                                            affinity_seg=affinity_seg, 
                                             min_size=min_size, 
                                             stitch_threshold=stitch_threshold,
                                             omni=omni,
@@ -495,7 +501,7 @@ class CellposeModel(UnetModel):
              z_axis=None, normalize=True, invert=False, 
              rescale=None, diameter=None, do_3D=False, anisotropy=None, net_avg=True, 
              augment=False, tile=True, tile_overlap=0.1,
-             resample=True, interp=True, cluster=False, boundary_seg=False,
+             resample=True, interp=True, cluster=False, boundary_seg=False, affinity_seg=False,
              flow_threshold=0.4, mask_threshold=0.0, diam_threshold=12.,
              cellprob_threshold=None, dist_threshold=None, flow_factor=5.0,
              compute_masks=True, min_size=15, stitch_threshold=0.0, progress=None, omni=False, 
@@ -661,6 +667,7 @@ class CellposeModel(UnetModel):
                                                  interp=interp,
                                                  cluster=cluster,
                                                  boundary_seg=boundary_seg,
+                                                 affinity_seg=affinity_seg,
                                                  mask_threshold=mask_threshold, 
                                                  diam_threshold=diam_threshold,
                                                  flow_threshold=flow_threshold, 
@@ -706,45 +713,63 @@ class CellposeModel(UnetModel):
             rescale = self.diam_mean / diameter if (rescale is None and (diameter is not None and diameter>0)) else rescale
             rescale = 1.0 if rescale is None else rescale
 
-            masks, styles, dP, cellprob, p, bd, tr, bounds = self._run_cp(x, 
-                                                                          compute_masks=compute_masks,
-                                                                          normalize=normalize,
-                                                                          invert=invert,
-                                                                          rescale=rescale, 
-                                                                          net_avg=net_avg, 
-                                                                          resample=resample,
-                                                                          augment=augment, 
-                                                                          tile=tile, 
-                                                                          tile_overlap=tile_overlap,
-                                                                          mask_threshold=mask_threshold, 
-                                                                          diam_threshold=diam_threshold,
-                                                                          flow_threshold=flow_threshold,
-                                                                          flow_factor=flow_factor,
-                                                                          interp=interp,
-                                                                          cluster=cluster,
-                                                                          boundary_seg=boundary_seg,                                                                             
-                                                                          min_size=min_size, 
-                                                                          do_3D=do_3D, 
-                                                                          anisotropy=anisotropy,
-                                                                          stitch_threshold=stitch_threshold,
-                                                                          omni=omni,
-                                                                          calc_trace=calc_trace,
-                                                                          verbose=verbose)
-            flows = [plot.dx_to_circ(dP,transparency=transparency) if self.nclasses>1 else np.zeros(cellprob.shape+(3,),np.uint8),
-                     dP, cellprob, p, bd, tr, bounds]
+            masks, styles, dP, cellprob, p, bd, tr, affinity, bounds  = self._run_cp(x, 
+                                                                                      compute_masks=compute_masks,
+                                                                                      normalize=normalize,
+                                                                                      invert=invert,
+                                                                                      rescale=rescale, 
+                                                                                      net_avg=net_avg, 
+                                                                                      resample=resample,
+                                                                                      augment=augment, 
+                                                                                      tile=tile, 
+                                                                                      tile_overlap=tile_overlap,
+                                                                                      mask_threshold=mask_threshold, 
+                                                                                      diam_threshold=diam_threshold,
+                                                                                      flow_threshold=flow_threshold,
+                                                                                      flow_factor=flow_factor,
+                                                                                      interp=interp,
+                                                                                      cluster=cluster,
+                                                                                      boundary_seg=boundary_seg,  
+                                                                                      affinity_seg=affinity_seg,
+                                                                                      min_size=min_size, 
+                                                                                      do_3D=do_3D, 
+                                                                                      anisotropy=anisotropy,
+                                                                                      stitch_threshold=stitch_threshold,
+                                                                                      omni=omni,
+                                                                                      calc_trace=calc_trace,
+                                                                                      verbose=verbose)
+            
+            # the flow list stores: 
+            # (1) RGB representation of flows
+            # (2) flow components
+            # (3) cellprob (cp) or distance field (op)
+            # (4) pixel coordinates after Euler integration
+            # (5) boundary output (nclasses=4)
+            # (6) pixel trajectories during Euler integation (trace=True)
+            # (7) nstep_by_npix affinity graph
+            # (8) binary boundary map
+            
+            # 5-8 were added in Omnipose, hence the unusual placement in the list. 
+            
+            flows = [plot.dx_to_circ(dP,transparency=transparency) 
+                     if self.nclasses>1 else np.zeros(cellprob.shape+(3+transparency,),np.uint8),
+                     dP, cellprob, p, bd, tr, affinity, bounds]
+        
             return masks, flows, styles
 
     def _run_cp(self, x, compute_masks=True, normalize=True, invert=False,
                 rescale=1.0, net_avg=True, resample=True,
                 augment=False, tile=True, tile_overlap=0.1,
                 mask_threshold=0.0, diam_threshold=12., flow_threshold=0.4, flow_factor=5.0, min_size=15,
-                interp=True, cluster=False, boundary_seg=False, anisotropy=1.0, do_3D=False, stitch_threshold=0.0,
+                interp=True, cluster=False, boundary_seg=False, affinity_seg=False,
+                anisotropy=1.0, do_3D=False, stitch_threshold=0.0,
                 omni=False, calc_trace=False, verbose=False):
         
         tic = time.time()
         shape = x.shape
         nimg = shape[0] 
-        bd, tr = None, None
+        bd, tr, affinity = None, None, None
+        
         if do_3D:
             img = np.asarray(x)
             if normalize or invert: # possibly make normalize a vector of upper-lower values  
@@ -774,6 +799,8 @@ class CellposeModel(UnetModel):
             
             dP = np.zeros((self.dim, nimg,)+s, np.float32)
             cellprob = np.zeros((nimg,)+s, np.float32)
+            bounds = np.zeros((nimg,)+s, bool)
+            
             for i in iterator:
                 img = np.asarray(x[i])
                 if normalize or invert:
@@ -799,7 +826,8 @@ class CellposeModel(UnetModel):
                 # the clustering etc. work even better, but that is not implemented yet 
                 if resample:
                     # ND version actually gives better results than CV2 in some places. 
-                    yf = np.stack([zoom(yf[...,k], shape[1:1+self.dim]/np.array(yf.shape[:2]), order=1) for k in range(yf.shape[-1])],axis=-1)
+                    yf = np.stack([zoom(yf[...,k], shape[1:1+self.dim]/np.array(yf.shape[:2]), order=1) 
+                                   for k in range(yf.shape[-1])],axis=-1)
                     # scipy.ndimage.affine_transform(A, np.linalg.inv(M), output_shape=tyx,
                 
                 if self.nclasses>1:
@@ -826,7 +854,7 @@ class CellposeModel(UnetModel):
 
         if compute_masks:
             tic = time.time()
-            niter = 200 if (do_3D and not resample) else (1 / rescale * 200)
+            niter = None if omni else 200 if (do_3D and not resample) else (1 / rescale * 200)
             if do_3D:
                 if not (omni and OMNI_INSTALLED):
                     # run cellpose compute_masks                   
@@ -837,28 +865,30 @@ class CellposeModel(UnetModel):
                                                                   interp=interp, do_3D=do_3D, min_size=min_size, verbose=verbose,
                                                                   use_gpu=self.gpu, device=self.device, nclasses=self.nclasses,
                                                                   calc_trace=calc_trace)
+                    affinity = []
                 else:
                     # run omnipose compute_masks
-                    masks, bounds, p, tr = omnipose.core.compute_masks(dP, cellprob, bd,
-                                                                       do_3D=do_3D,
-                                                                       niter=niter,
-                                                                       resize=None,
-                                                                       min_size=min_size, 
-                                                                       mask_threshold=mask_threshold,  
-                                                                       diam_threshold=diam_threshold,
-                                                                       flow_threshold=flow_threshold, 
-                                                                       flow_factor=flow_factor,      
-                                                                       interp=interp, 
-                                                                       cluster=cluster,
-                                                                       boundary_seg=boundary_seg,
-                                                                       calc_trace=calc_trace, 
-                                                                       verbose=verbose,
-                                                                       use_gpu=self.gpu, 
-                                                                       device=self.device, 
-                                                                       nclasses=self.nclasses, 
-                                                                       dim=self.dim)
+                    masks, bounds, p, tr, affinity = omnipose.core.compute_masks(dP, cellprob, bd,
+                                                                               do_3D=do_3D,
+                                                                               niter=niter,
+                                                                               resize=None,
+                                                                               min_size=min_size, 
+                                                                               mask_threshold=mask_threshold,  
+                                                                               diam_threshold=diam_threshold,
+                                                                               flow_threshold=flow_threshold, 
+                                                                               flow_factor=flow_factor,      
+                                                                               interp=interp, 
+                                                                               cluster=cluster,
+                                                                               boundary_seg=boundary_seg,
+                                                                               affinity_seg=affinity_seg,
+                                                                               calc_trace=calc_trace, 
+                                                                               verbose=verbose,
+                                                                               use_gpu=self.gpu, 
+                                                                               device=self.device, 
+                                                                               nclasses=self.nclasses, 
+                                                                               dim=self.dim)
             else:
-                masks, bounds, p, tr = [], [], [], []
+                masks, bounds, p, tr, affinity = [], [], [], [], []
                 resize = shape[-(self.dim+1):-1] if not resample else None 
                 # print('compute masks 2',resize,shape,resample)
                 for i in iterator:
@@ -868,6 +898,7 @@ class CellposeModel(UnetModel):
                                                          flow_threshold=flow_threshold, interp=interp, resize=resize, verbose=verbose,
                                                          use_gpu=self.gpu, device=self.device, nclasses=self.nclasses,
                                                          calc_trace=calc_trace)
+                        outputs += [] # affinity placeholder
                     else:
                         # run omnipose compute_masks
                         
@@ -892,6 +923,7 @@ class CellposeModel(UnetModel):
                                                               interp=interp, 
                                                               cluster=cluster, 
                                                               boundary_seg=boundary_seg,
+                                                              affinity_seg=affinity_seg,
                                                               calc_trace=calc_trace, 
                                                               verbose=verbose,
                                                               use_gpu=self.gpu, 
@@ -902,11 +934,13 @@ class CellposeModel(UnetModel):
                     p.append(outputs[1])
                     tr.append(outputs[2])
                     bounds.append(outputs[3])
+                    affinity.append(outputs[4])
                 
                 masks = np.array(masks)
                 bounds = np.array(bounds)
                 p = np.array(p)
                 tr = np.array(tr)
+                affinity = np.array(affinity)
 
                 if stitch_threshold > 0 and nimg > 1:
                     models_logger.info(f'stitching {nimg} planes using stitch_threshold={stitch_threshold:0.3f} to make 3D masks')
@@ -915,17 +949,23 @@ class CellposeModel(UnetModel):
             flow_time = time.time() - tic
             if nimg > 1:
                 models_logger.info('masks created in %2.2fs'%(flow_time))
-            masks, bounds, dP, cellprob = masks.squeeze(), bounds.squeeze(), dP.squeeze(), cellprob.squeeze()
-            p = p.squeeze() if p is not None else p
-            bd = bd.squeeze() if bd is not None else bd
-        else:
-            masks, bounds, p , tr = np.zeros(0), np.zeros(0), np.zeros(0), np.zeros(0) #pass back zeros if not compute_masks            
             
-        return masks, styles, dP, cellprob, p, bd, tr, bounds
+            ret = [masks, styles, dP, cellprob, p, bd, tr, affinity, bounds]
+            ret = [r.squeeze() if r is not None else r for r in ret]
+            
+        else:
+            #pass back zeros if not compute_masks 
+            ret = [np.zeros(0)]*9
+            
+        return (*ret,)
 
         
     def loss_fn(self, lbl, y):
-        """ loss function between true labels lbl and prediction y """
+        """ 
+        loss function between true labels lbl and prediction y 
+        This is the one used to train the instance segmentation network. 
+        
+        """
         if self.omni and OMNI_INSTALLED: #loss function for omnipose fields
             loss = omnipose.core.loss(self, lbl, y)
         else: # original loss function 

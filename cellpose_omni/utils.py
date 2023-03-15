@@ -6,6 +6,7 @@ import cv2
 from scipy.ndimage import find_objects, gaussian_filter, generate_binary_structure, label, maximum_filter1d, binary_fill_holes
 from scipy.spatial import ConvexHull
 from scipy.stats import gmean
+from skimage.segmentation import find_boundaries
 import numpy as np
 import colorsys
 import io
@@ -188,7 +189,7 @@ def remove_edge_masks(masks, change_index=True):
 
     return masks
 
-def masks_to_outlines(masks):
+def masks_to_outlines(masks,omni=False):
     """ get outlines of masks as a 0-1 array 
     
     Parameters
@@ -213,15 +214,18 @@ def masks_to_outlines(masks):
             outlines[i] = masks_to_outlines(masks[i])
         return outlines
     else:
-        slices = find_objects(masks.astype(int))
-        for i,si in enumerate(slices):
-            if si is not None:
-                sr,sc = si
-                mask = (masks[sr, sc] == (i+1)).astype(np.uint8)
-                contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-                pvc, pvr = np.concatenate(contours[-2], axis=0).squeeze().T            
-                vr, vc = pvr + sr.start, pvc + sc.start 
-                outlines[vr, vc] = 1
+        if omni and SKIMAGE_ENABLED:
+            outlines = find_boundaries(masks,mode='inner',connectivity=masks.ndim)
+        else:
+            slices = find_objects(masks.astype(int))
+            for i,si in enumerate(slices):
+                if si is not None:
+                    sr,sc = si
+                    mask = (masks[sr, sc] == (i+1)).astype(np.uint8)
+                    contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+                    pvc, pvr = np.concatenate(contours[-2], axis=0).squeeze().T            
+                    vr, vc = pvr + sr.start, pvc + sc.start 
+                    outlines[vr, vc] = 1
         return outlines
 
 def outlines_list(masks):

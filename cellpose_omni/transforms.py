@@ -77,6 +77,55 @@ def unaugment_tiles(y, unet=False):
                     y[j,i,1] *= -1
     return y
 
+def get_flip(idx):
+    """
+    ND slices for flipping arrays along particular axes 
+    based on the tile indices. Used in augment_tiles_ND()
+    and unaugment_tiles_ND(). 
+    """
+    return tuple([slice(None,None,None) if i%2 else 
+                  slice(None,None,-1) for i in idx])
+
+
+def unaugment_tiles_ND(y, inds, unet=False):
+    """ reverse test-time augmentations for averaging
+
+    Parameters
+    ----------
+
+    y: float32
+        array that's ntiles x chan x Ly x Lx where 
+        chan = (dY, dX, dist, boundary)
+
+    unet: bool (optional, False)
+        whether or not unet output or cellpose output
+    
+    Returns
+    -------
+
+    y: float32
+
+    """
+    dim = len(inds[0])
+    
+    for i,idx in enumerate(inds): 
+        
+        # repeat the flip to undo it 
+        flip = get_flip(idx)
+        
+        # flow field componenets need to be flipped 
+        factor = np.array([1 if i%2 else -1 for i in idx])
+        
+        # apply the flip
+        y[i] = y[i][(Ellipsis,)+flip]
+        
+        # apply the flow field flip
+        if not unet:
+            y[i][:dim] = [s*f for s,f in zip(y[i][:dim],factor)]
+            
+    return y
+
+
 def average_tiles(y, ysub, xsub, Ly, Lx):
     """ average results of network over tiles
 
@@ -280,42 +329,34 @@ def make_tiles_ND(imgi, bsize=224, augment=False, tile_overlap=0.1):
     
     """
 
-    # nchan, Ly, Lx = imgi.shape
     nchan = imgi.shape[0]
     shape = imgi.shape[1:]
     dim = len(shape)
+    inds = []
     if augment:
         bsize = np.int32(bsize)
         # pad if image smaller than bsize
-        if Ly<bsize:
-            imgi = np.concatenate((imgi, np.zeros((nchan, bsize-Ly, Lx))), axis=1)
-            Ly = bsize
-        if Lx<bsize:
-            imgi = np.concatenate((imgi, np.zeros((nchan, Ly, bsize-Lx))), axis=2)
-        Ly, Lx = imgi.shape[-2:]
+        pad_seq = [(0,0)]+[(0,max(0,bsize-s))for s in shape]
+        imgi = np.pad(imgi,pad_seq)
+        shape = imgi.shape[-dim:]
+        
         # tiles overlap by half of tile size
-        ny = max(2, int(np.ceil(2. * Ly / bsize)))
-        nx = max(2, int(np.ceil(2. * Lx / bsize)))
-        ystart = np.linspace(0, Ly-bsize, ny).astype(int)
-        xstart = np.linspace(0, Lx-bsize, nx).astype(int)
-
-        ysub = []
-        xsub = []
-
-        # flip tiles so that overlapping segments are processed in rotation
-        IMG = np.zeros((len(ystart), len(xstart), nchan,  bsize, bsize), np.float32)
-        for j in range(len(ystart)):
-            for i in range(len(xstart)):
-                ysub.append([ystart[j], ystart[j]+bsize])
-                xsub.append([xstart[i], xstart[i]+bsize])
-                IMG[j, i] = imgi[:, ysub[-1][0]:ysub[-1][1],  xsub[-1][0]:xsub[-1][1]]
-                # flip tiles to allow for augmentation of overlapping segments
-                if j%2==0 and i%2==1:
-                    IMG[j,i] = IMG[j,i, :,::-1, :]
-                elif j%2==1 and i%2==0:
-                    IMG[j,i] = IMG[j,i, :,:, ::-1]
-                elif j%2==1 and i%2==1:
-                    IMG[j,i] = IMG[j,i,:, ::-1, ::-1]
+        ntyx = [max(2, int(np.ceil(2. * s / bsize))) for s in shape]
+        start = [np.linspace(0, s-bsize, n).astype(int) for s,n in zip(shape,ntyx)]
+        
+        intervals = [[slice(si,si+bsize) for si in s] for s in start]
+        subs = list(itertools.product(*intervals))
+        indexes = [np.arange(len(s)) for s in start]
+        inds = list(itertools.product(*indexes))
+        
+        IMG = []
+        
+        # here I flip if the index is odd 
+        for slc,idx in zip(subs,inds):        
+            flip = get_flip(idx) # avoid repetition with unaugment
+            IMG.append(imgi[(Ellipsis,)+slc][(Ellipsis,)+flip])
+        
+        IMG = np.stack(IMG)
     else:
         tile_overlap = min(0.5, max(0.05, tile_overlap))
         # bsizeY, bsizeX = min(bsize, Ly), min(bsize, Lx)
@@ -323,7 +364,8 @@ def make_tiles_ND(imgi, bsize=224, augment=False, tile_overlap=0.1):
         bbox = tuple([np.int32(min(bsize,s)) for s in shape])
         
         # tiles overlap by 10% tile size
-        ntyx = [1 if s<=bsize else int(np.ceil((1.+2*tile_overlap) * s / bsize)) for s in shape]
+        ntyx = [1 if s<=bsize else int(np.ceil((1.+2*tile_overlap) * s / bsize)) 
+                for s in shape]
         start = [np.linspace(0, s-b, n).astype(int) for s,b,n in zip(shape,bbox,ntyx)]
 
         intervals = [[slice(si,si+bsize) for si in s] for s in start]
@@ -333,7 +375,7 @@ def make_tiles_ND(imgi, bsize=224, augment=False, tile_overlap=0.1):
         # IMG = np.zeros(tuple([len(s) for s in start])+(nchan,)+bbox, np.float32)
         IMG = np.stack([imgi[(Ellipsis,)+slc] for slc in subs])
         
-    return IMG, subs, shape
+    return IMG, subs, shape, inds
 
 # needs to have a wider range to avoid weird effects with few cells in frame
 # also turns out previous formulation can give negative numbers, messes up log operations etc. 

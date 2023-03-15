@@ -68,7 +68,7 @@ def dx_to_circ(dP,transparency=False,mask=None,sinebow=True,norm=True):
     im = (np.clip(im, 0, 1) * 255).astype(np.uint8)
     return im
 
-def show_segmentation(fig, img, maski, flowi, bdi=None, channels=[0,0], file_name=None, omni=False, 
+def show_segmentation(fig, img, maski, flowi, bdi=None, channels=None, file_name=None, omni=False, 
                       seg_norm=False, bg_color=None, channel_axis=-1, display=True):
     """ plot segmentation results (like on website)
     
@@ -107,7 +107,8 @@ def show_segmentation(fig, img, maski, flowi, bdi=None, channels=[0,0], file_nam
         
 
     """
-    
+    if channels is None:
+        channels = [0,0]
     img0 = img.copy()
     img0 = transforms.reshape(img0,channels=channels) # this makes sure channel axis is last 
     
@@ -119,7 +120,7 @@ def show_segmentation(fig, img, maski, flowi, bdi=None, channels=[0,0], file_nam
     img0 = (transforms.normalize99(img0,omni=omni)*(2**8-1)).astype(np.uint8)
     
     if bdi is None:
-        outlines = utils.masks_to_outlines(maski)
+        outlines = utils.masks_to_outlines(maski,omni)
     else:
         outlines = bdi
 

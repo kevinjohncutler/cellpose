@@ -580,7 +580,8 @@ class UnetModel():
                     IMGa = np.zeros((ntiles*nimgs, nchan, ly, lx), np.float32)
                     for i in range(min(Lz-k*nimgs, nimgs)):
                         IMG, ysub, xsub, Ly, Lx = transforms.make_tiles(imgi[k*nimgs+i], bsize=bsize, 
-                                                                        augment=augment, tile_overlap=tile_overlap)
+                                                                        augment=augment,
+                                                                        tile_overlap=tile_overlap)
                         IMGa[i*ntiles:(i+1)*ntiles] = np.reshape(IMG, (ny*nx, nchan, ly, lx))
                     ya, stylea = self.network(IMGa)
                     for i in range(min(Lz-k*nimgs, nimgs)):
@@ -597,8 +598,12 @@ class UnetModel():
                         styles.append(stylei)
             return yf, np.array(styles)
         else:
-            IMG, subs, shape = transforms.make_tiles_ND(imgi, bsize=bsize, augment=augment, tile_overlap=tile_overlap) #<<<
-            # IMG already in the form (ny*nx, nchan, ly, lx)
+            IMG, subs, shape, inds = transforms.make_tiles_ND(imgi, bsize=bsize,
+                                                              augment=augment,
+                                                              tile_overlap=tile_overlap) #<<<
+            # IMG now always returned in the form (ny*nx, nchan, ly, lx) 
+            # for either tiling or augmenting
+            
             batch_size = self.batch_size
             niter = int(np.ceil(IMG.shape[0] / batch_size))
             nout = self.nclasses + 32*return_conv
@@ -612,10 +617,9 @@ class UnetModel():
                     styles = style[0]
                 styles += style.sum(axis=0)
             styles /= IMG.shape[0]
-            if augment: # not updated for ND yet 
-                y = np.reshape(y, (ny, nx, nout, bsize, bsize))
-                y = transforms.unaugment_tiles(y, self.unet)
-                y = np.reshape(y, (-1, nout, bsize, bsize))
+            if augment: 
+                # now updated for ND 
+                y = transforms.unaugment_tiles_ND(y, inds, self.unet)
             
             yf = transforms.average_tiles_ND(y, subs, shape) #<<<
             slc = tuple([slice(s) for s in shape])
@@ -880,6 +884,7 @@ class UnetModel():
                 self.criterion14 = ArcCosDotLoss()
                 self.criterion15 = NormLoss()
                 self.criterion16 = DivergenceLoss()
+                # self.ivp_loss =  ivp_loss.IVPLoss(dx=0.25,n_steps=8,device=self)
                 # self.criterion17 = nn.SoftmaxCrossEntropyLoss(axis=1)
                 # self.criterion17 = FocalLoss()
                 
@@ -1002,7 +1007,7 @@ class UnetModel():
                 # now passing in the full train array, need the labels for distance field
                 imgi, lbl, scale = transforms.random_rotate_and_resize([train_data[i] for i in inds], 
                                                                        Y=[train_labels[i] for i in inds],
-                                                                       links=[train_links[i] for i in inds],
+                                                                       links= None if train_links is None else [train_links[i] for i in inds],
                                                                        rescale=rsc, 
                                                                        scale_range=scale_range, 
                                                                        unet=self.unet, 

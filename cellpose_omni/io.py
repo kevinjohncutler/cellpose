@@ -71,7 +71,7 @@ def load_links(filename):
     """
     Read a txt or csv file with label links. 
     These should look like:
-        1,2
+        1,2 
         1,3
         4,7
         6,19
