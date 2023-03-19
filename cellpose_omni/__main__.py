@@ -429,19 +429,22 @@ def main(omni_CLI=False):
                     raise ValueError(error_message)
                 cpmodel_path = False
                 logger.info('training from scratch')
-                if args.diameter==0:
-                    rescale = False 
-                    logger.info('median diameter set to 0 => no rescaling during training')
-                else:
-                    rescale = True
-                    szmean = args.diameter 
             else:
-                rescale = True
+                # all of this assumes Cellpose
                 args.diameter = szmean 
                 logger.info('pretrained model %s is being used'%cpmodel_path)
                 args.residual_on = 1
                 args.style_on = 1
                 args.concatenation = 0
+                
+            # previously, only training from scratch allowed you to change diameter/szmean
+            # it also enforced 
+            if args.diameter==0:
+                rescale = False 
+                logger.info('median diameter set to 0 => no rescaling during training')
+            else:
+                rescale = True         
+
             if rescale and args.train:
                 logger.info('during training rescaling images to fixed diameter of %0.1f pixels'%args.diameter)
                 

@@ -937,7 +937,7 @@ class UnetModel():
         
         # compute average cell diameter
         if rescale:
-            if links is not None:
+            if train_links is not None:
                 core_logger.warning("""WARNING: rescaling not updated for multi-label objects. 
                                     Check rescaling manually for the right diameter.""")
                 
