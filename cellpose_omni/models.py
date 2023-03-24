@@ -1069,6 +1069,7 @@ class CellposeModel(UnetModel):
         if rescale:
             models_logger.info(f'Training with rescale = {rescale:.2f}')
         # images may need some dimension shuffling to conform to standard, this is link-independent 
+        
         train_data, train_labels, test_data, test_labels, run_test = transforms.reshape_train_test(train_data, train_labels,  
                                                                                                    test_data, test_labels,
                                                                                                    channels, channel_axis,

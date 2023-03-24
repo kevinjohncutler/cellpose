@@ -176,11 +176,17 @@ def main(omni_CLI=False):
         os.environ["MXNET_SUBGRAPH_BACKEND"]=""
     
     if len(args.dir)==0:
+        # previously, we would just ask users to run the install command for the GUI
+        # In omnipose, the GUI is so useful for debugging that I enforced it.
+        # However, PyQt6 can cause enough issues within existing environments that I have reconsidered...
+        # Compromise: if users request the GUI with 'python -m omnipose', this prompt will install it for them 
         if not GUI_ENABLED:
             print('GUI ERROR: %s'%GUI_ERROR)
             if GUI_IMPORT:
-                print('GUI FAILED: GUI dependencies may not be installed, to install, run')
-                print('     pip install cellpose-omni[gui]')
+                print('GUI dependencies may not be installed (normal for first run).')
+                confirm = confirm_prompt('Install GUI dependencies? (Note: uses PyQt6.)')
+                if confirm:
+                    install('cellpose-omni[gui]')
         else:
             gui.run()
 
@@ -227,6 +233,7 @@ def main(omni_CLI=False):
         if 'omni' in args.pretrained_model or omni_CLI:
             args.omni = True
         
+        # should revisit this for affiity graph segmentation 
         if args.cluster and 'sklearn' not in sys.modules:
             print('DBSCAN clustering requires scikit-learn.')
             confirm = confirm_prompt('Install scikit-learn?')

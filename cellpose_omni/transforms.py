@@ -636,13 +636,13 @@ def reshape_train_test(train_data, train_labels, test_data, test_labels, channel
             len(test_data) > 0 and len(test_data)==len(test_labels)):
         test_data = None
 
-#     print('reshape_train_test',train_data[0].shape,channels,normalize,omni)
+    print('reshape_train_test',train_data[0].shape,channels,normalize,omni)
     # make data correct shape and normalize it so that 0 and 1 are 1st and 99th percentile of data
     # reshape_and_normalize_data pads the train_data with an eplty channel axis if it doesn't have one (single channel images/volumes). 
     train_data, test_data, run_test = reshape_and_normalize_data(train_data, test_data=test_data, 
                                                                  channels=channels, channel_axis=channel_axis,
-                                                                 normalize=normalize, omni=omni)
-    # print('reshape_train_test_2',train_data[0].shape)
+                                                                 normalize=normalize, omni=omni, dim=dim)
+    print('reshape_train_test_2',train_data[0].shape)
 
     if train_data is None:
         error_message = 'training data do not all have the same number of channels'
@@ -655,7 +655,7 @@ def reshape_train_test(train_data, train_labels, test_data, test_labels, channel
 
     return train_data, train_labels, test_data, test_labels, run_test
 
-def reshape_and_normalize_data(train_data, test_data=None, channels=None, channel_axis=0, normalize=True, omni=False):
+def reshape_and_normalize_data(train_data, test_data=None, channels=None, channel_axis=0, normalize=True, omni=False, dim=2):
     """ inputs converted to correct shapes for *training* and rescaled so that 0.0=1st percentile
     and 1.0=99th percentile of image intensities in each channel
 
@@ -691,11 +691,9 @@ def reshape_and_normalize_data(train_data, test_data=None, channels=None, channe
 
     """
 
-    # if training data is less than 2D
-    run_test = False
     for test, data in enumerate([train_data, test_data]):
         if data is None:
-            return train_data, test_data, run_test
+            return train_data, test_data, False
         nimg = len(data)
         # print('reshape_and_normalize_data',nimg,channels,data[0].shape)
         for i in range(nimg):
@@ -709,7 +707,9 @@ def reshape_and_normalize_data(train_data, test_data=None, channels=None, channe
             # if data[i].ndim < 3:
             #     data[i] = data[i][np.newaxis,:,:]
             # we actually want this padding for single-channel volumes too
-            if channels is None: # data with multiple channels will have channels defined and have an axis already; could also pass in nchan to avoid this assumption 
+            
+            # data with multiple channels will have channels defined and have an axis already; could also pass in nchan to avoid this assumption 
+            if channels is None and data[i].ndim==dim: 
                 data[i] = data[i][np.newaxis]
             
             # instead of this, we could just make the other parts of the code not rely on a channel axis and slice smarter 
@@ -717,9 +717,8 @@ def reshape_and_normalize_data(train_data, test_data=None, channels=None, channe
             if normalize:
                 data[i] = normalize_img(data[i], axis=0, omni=omni)
         nchan = [data[i].shape[0] for i in range(nimg)]
-    run_test = True
     print('reshape_and_normalize_data_2',nimg,channels,data[0].shape,train_data[0].shape)
-    return train_data, test_data, run_test
+    return train_data, test_data, True
 
 def resize_image(img0, Ly=None, Lx=None, rsz=None, interpolation=cv2.INTER_LINEAR, no_channels=False):
     """ resize image for computing flows / unresize for computing dynamics

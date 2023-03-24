@@ -728,7 +728,7 @@ class UnetModel():
                                                                                                    test_data, test_labels,
                                                                                                    channels, self.channel_axis, 
                                                                                                    normalize)
-
+        print('iii',train_data[0].shape)
         # add dist_to_bound to labels
         if self.nclasses==3:
             core_logger.info('computing boundary pixels')
