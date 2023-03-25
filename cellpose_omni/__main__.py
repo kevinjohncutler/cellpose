@@ -86,7 +86,8 @@ def main(omni_CLI=False):
     # algorithm settings
     algorithm_args = parser.add_argument_group("algorithm arguments")
     algorithm_args.add_argument('--omni', action='store_true', help='Omnipose algorithm (disabled by default)')
-    algorithm_args.add_argument('--cluster', action='store_true', help='DBSCAN clustering. Reduces oversegmentation of thin features (disabled by default).')
+    algorithm_args.add_argument('--affinity_seg',action='store_true', help='use new affinity segmentation algorithm (disabled by default)')
+    algorithm_args.add_argument('--cluster', action='store_true', help='DBSCAN clustering. Reduces oversegmentation of thin features (disabled by default)')
     algorithm_args.add_argument('--fast_mode', action='store_true', help='make code run faster by turning off 4 network averaging and resampling')
     algorithm_args.add_argument('--no_resample', action='store_true', 
                                 help="disable dynamics on full image (makes algorithm faster for images with large diameters)")
@@ -100,10 +101,11 @@ def main(omni_CLI=False):
     algorithm_args.add_argument('--stitch_threshold', required=False, default=0.0, type=float, help='compute masks in 2D then stitch together masks with IoU>0.9 across planes')
     algorithm_args.add_argument('--flow_threshold', default=0.4, type=float, help='flow error threshold, 0 turns off this optional QC step. Default: %(default)s')
     algorithm_args.add_argument('--mask_threshold', default=0, type=float, help='mask threshold, default is 0, decrease to find more and larger masks')
+    algorithm_args.add_argument('--niter', default=None, type=float, help='Number of Euler iterations, enter value to override Omnipose diameter estimation (under/over-segment)')
     algorithm_args.add_argument('--anisotropy', required=False, default=1.0, type=float,
                                 help='anisotropy of volume in 3D')
     algorithm_args.add_argument('--diam_threshold', required=False, default=12.0, type=float, 
-                                help='cell diameter threshold for upscaling before mask rescontruction, default 12.')
+                                help='cell diameter threshold for upscaling before mask rescontruction, default 12')
     algorithm_args.add_argument('--exclude_on_edges', action='store_true', help='discard masks which touch edges of image')
     
     # output settings
@@ -355,6 +357,7 @@ def main(omni_CLI=False):
                                 resample=(not args.no_resample and not args.fast_mode),
                                 flow_threshold=args.flow_threshold,
                                 mask_threshold=args.mask_threshold,
+                                niter = args.niter,
                                 diam_threshold=args.diam_threshold,
                                 invert=args.invert,
                                 batch_size=args.batch_size,
@@ -363,6 +366,7 @@ def main(omni_CLI=False):
                                 channel_axis=args.channel_axis,
                                 z_axis=args.z_axis,
                                 omni=args.omni,
+                                affinity_seg=args.affinity_seg,
                                 anisotropy=args.anisotropy,
                                 verbose=args.verbose,
                                 transparency=args.transparency, # RGB flows made in the eval step
