@@ -157,11 +157,12 @@ def show_segmentation(fig, img, maski, flowi, bdi=None, channels=None, file_name
         
         
     if display:
+        c = [0.5]*3
         if not MATPLOTLIB_ENABLED:
             raise ImportError("matplotlib not installed, install with 'pip install matplotlib'")
         ax = fig.add_subplot(1,4,1)
         ax.imshow(img0)
-        ax.set_title('original image')
+        ax.set_title('original image',c=c)
         ax.axis('off')
         ax = fig.add_subplot(1,4,2)
         outX, outY = np.nonzero(outlines)
@@ -169,12 +170,12 @@ def show_segmentation(fig, img, maski, flowi, bdi=None, channels=None, file_name
         imgout[outX, outY] = np.array([255,0,0]) # pure red
 
         ax.imshow(imgout)
-        ax.set_title('predicted outlines')
+        ax.set_title('predicted outlines',c=c)
         ax.axis('off')
 
         ax = fig.add_subplot(1,4,3)
         ax.imshow(overlay)
-        ax.set_title('predicted masks')
+        ax.set_title('predicted masks',c=c)
         ax.axis('off')
 
         ax = fig.add_subplot(1,4,4)
@@ -182,7 +183,7 @@ def show_segmentation(fig, img, maski, flowi, bdi=None, channels=None, file_name
             ax.imshow(np.ones_like(flowi)*bg_color)
 
         ax.imshow(flowi)
-        ax.set_title('predicted flow field')
+        ax.set_title('predicted flow field',c=c)
         ax.axis('off')
     
     else:

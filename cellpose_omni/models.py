@@ -502,7 +502,7 @@ class CellposeModel(UnetModel):
              rescale=None, diameter=None, do_3D=False, anisotropy=None, net_avg=True, 
              augment=False, tile=True, tile_overlap=0.1,
              resample=True, interp=True, cluster=False, boundary_seg=False, affinity_seg=False,
-             flow_threshold=0.4, mask_threshold=0.0, diam_threshold=12.,
+             flow_threshold=0.4, mask_threshold=0.0, diam_threshold=12., niter=None,
              cellprob_threshold=None, dist_threshold=None, flow_factor=5.0,
              compute_masks=True, min_size=15, stitch_threshold=0.0, progress=None, omni=False, 
              calc_trace=False, verbose=False, transparency=False, loop_run=False, model_loaded=False):
@@ -671,6 +671,7 @@ class CellposeModel(UnetModel):
                                                  mask_threshold=mask_threshold, 
                                                  diam_threshold=diam_threshold,
                                                  flow_threshold=flow_threshold, 
+                                                 niter=niter,
                                                  flow_factor=flow_factor,
                                                  compute_masks=compute_masks, 
                                                  min_size=min_size, 
@@ -726,6 +727,7 @@ class CellposeModel(UnetModel):
                                                                                       mask_threshold=mask_threshold, 
                                                                                       diam_threshold=diam_threshold,
                                                                                       flow_threshold=flow_threshold,
+                                                                                      niter=niter,
                                                                                       flow_factor=flow_factor,
                                                                                       interp=interp,
                                                                                       cluster=cluster,
@@ -760,7 +762,7 @@ class CellposeModel(UnetModel):
     def _run_cp(self, x, compute_masks=True, normalize=True, invert=False,
                 rescale=1.0, net_avg=True, resample=True,
                 augment=False, tile=True, tile_overlap=0.1,
-                mask_threshold=0.0, diam_threshold=12., flow_threshold=0.4, flow_factor=5.0, min_size=15,
+                mask_threshold=0.0, diam_threshold=12., flow_threshold=0.4, niter=None, flow_factor=5.0, min_size=15,
                 interp=True, cluster=False, boundary_seg=False, affinity_seg=False,
                 anisotropy=1.0, do_3D=False, stitch_threshold=0.0,
                 omni=False, calc_trace=False, verbose=False):
@@ -770,13 +772,25 @@ class CellposeModel(UnetModel):
         nimg = shape[0] 
         bd, tr, affinity = None, None, None
         
+        # set up image padding for prediction 
+        pad = 3
+        pad_seq = [(pad,)*2]*self.dim + [(0,)*2] # do not pad channel axis 
+        unpad = tuple([slice(pad,-pad) if pad else slice(None,None)]*self.dim) # works in case pad is zero
+        
         if do_3D:
             img = np.asarray(x)
             if normalize or invert: # possibly make normalize a vector of upper-lower values  
                 img = transforms.normalize_img(img, invert=invert, omni=omni)
+            
+            # have not tested padding in do_3d yet 
+            # img = np.pad(img,pad_seq,'reflect')
+            
             yf, styles = self._run_3D(img, rsz=rescale, anisotropy=anisotropy, 
                                       net_avg=net_avg, augment=augment, tile=tile,
                                       tile_overlap=tile_overlap)
+            # unpadding 
+            # yf = yf[unpad+(Ellipsis,)]
+            
             cellprob = np.sum([yf[k][2] for k in range(3)],axis=0)/3 if omni else np.sum([yf[k][2] for k in range(3)],axis=0)
             bd = np.sum([yf[k][3] for k in range(3)],axis=0)/3 if self.nclasses==4 else np.zeros_like(cellprob)
             dP = np.stack((yf[1][0] + yf[2][0], yf[0][0] + yf[2][1], yf[0][1] + yf[1][1]), axis=0) # (dZ, dY, dX)
@@ -805,7 +819,10 @@ class CellposeModel(UnetModel):
                 img = np.asarray(x[i])
                 if normalize or invert:
                     img = transforms.normalize_img(img, invert=invert, omni=omni)
-
+                
+                # pad the image to get cleaner output at the edges
+                # padding with edge values seems to work the best 
+                img = np.pad(img,pad_seq,'edge')
 
                 if rescale != 1.0:
                     # if self.dim>2:
@@ -820,7 +837,10 @@ class CellposeModel(UnetModel):
                 yf, style = self._run_nets(img, net_avg=net_avg,
                                            augment=augment, tile=tile,
                                            tile_overlap=tile_overlap)
-
+                # unpadding 
+                yf = yf[unpad+(Ellipsis,)]
+                
+                
                 # resample interpolates the network output to native resolution prior to running Euler integration
                 # this means the masks will have no scaling artifacts. We could *upsample* by some factor to make
                 # the clustering etc. work even better, but that is not implemented yet 
@@ -854,7 +874,13 @@ class CellposeModel(UnetModel):
 
         if compute_masks:
             tic = time.time()
-            niter = None if omni else 200 if (do_3D and not resample) else (1 / rescale * 200)
+            
+            # allow user to specify niter
+            # Cellpose default is 200
+            # Omnipose default is None (dynamically adjusts based on distance field)
+            if niter is None and not omni:
+                niter = 200 if (do_3D and not resample) else (1 / rescale * 200)
+            
             if do_3D:
                 if not (omni and OMNI_INSTALLED):
                     # run cellpose compute_masks                   
