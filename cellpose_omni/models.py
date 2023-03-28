@@ -884,12 +884,19 @@ class CellposeModel(UnetModel):
             if do_3D:
                 if not (omni and OMNI_INSTALLED):
                     # run cellpose compute_masks                   
-                    masks, bounds, p, tr = dynamics.compute_masks(dP, cellprob, bd, niter=niter, resize=None, 
+                    masks, bounds, p, tr = dynamics.compute_masks(dP, cellprob, bd, 
+                                                                  niter=niter, 
+                                                                  resize=None, 
                                                                   mask_threshold=mask_threshold,
                                                                   diam_threshold=diam_threshold, 
                                                                   flow_threshold=flow_threshold,
-                                                                  interp=interp, do_3D=do_3D, min_size=min_size, verbose=verbose,
-                                                                  use_gpu=self.gpu, device=self.device, nclasses=self.nclasses,
+                                                                  interp=interp, 
+                                                                  do_3D=do_3D, 
+                                                                  min_size=min_size, 
+                                                                  verbose=verbose,
+                                                                  use_gpu=self.gpu, 
+                                                                  device=self.device, 
+                                                                  nclasses=self.nclasses,
                                                                   calc_trace=calc_trace)
                     affinity = []
                 else:
@@ -920,11 +927,17 @@ class CellposeModel(UnetModel):
                 for i in iterator:
                     if not (omni and OMNI_INSTALLED):
                         # run cellpose compute_masks
-                        outputs = dynamics.compute_masks(dP[:,i], cellprob[i], niter=niter, mask_threshold=mask_threshold,
-                                                         flow_threshold=flow_threshold, interp=interp, resize=resize, verbose=verbose,
-                                                         use_gpu=self.gpu, device=self.device, nclasses=self.nclasses,
+                        outputs = dynamics.compute_masks(dP[:,i], cellprob[i], niter=niter, 
+                                                         mask_threshold=mask_threshold,
+                                                         flow_threshold=flow_threshold, 
+                                                         interp=interp, 
+                                                         resize=resize, 
+                                                         verbose=verbose,
+                                                         use_gpu=self.gpu, 
+                                                         device=self.device, 
+                                                         nclasses=self.nclasses,
                                                          calc_trace=calc_trace)
-                        outputs += [] # affinity placeholder
+                        outputs = outputs + ([],) # affinity placeholder
                     else:
                         # run omnipose compute_masks
                         
