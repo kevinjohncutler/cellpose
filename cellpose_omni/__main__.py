@@ -7,7 +7,9 @@ from tqdm import tqdm
 from cellpose_omni import utils, models, io
 
 from .models import MODEL_NAMES
-    
+
+import torch
+
 try:
     from cellpose_omni.gui import gui 
     GUI_ENABLED = True 
@@ -137,6 +139,9 @@ def main(omni_CLI=False):
                         default=500, type=int, help='number of epochs. Default: %(default)s')
     training_args.add_argument('--batch_size',
                         default=8, type=int, help='batch size. Default: %(default)s')
+    training_args.add_argument('--num_workers',
+                    default=0, type=int, help='number of dataloader workers. Default: %(default)s')
+    training_args.add_argument('--dataloader',action='store_true', help='Use pytorch dataloader instead of older manual loading code.')
     training_args.add_argument('--min_train_masks',
                         default=1, type=int, help='minimum number of masks a training image must have to be used. Default: %(default)s')
     training_args.add_argument('--residual_on',
@@ -154,11 +159,16 @@ def main(omni_CLI=False):
     training_args.add_argument('--tyx',
                         default=None, type=str, help='list of yx, zyx, or tyx dimensions for training')
     training_args.add_argument('--links',action='store_true', help='Search and use link files for multi-label objects.')
+    training_args.add_argument('--amp',action='store_true', help='Use Automatic Mixed Precision.')
+    training_args.add_argument('--affinity_field',action='store_true', help='Use summed affinity instead of distance field.')
+    
     
     
     # misc settings
     parser.add_argument('--verbose', action='store_true', help='flag to output extra information (e.g. diameter metrics) for debugging and fine-tuning parameters')
     parser.add_argument('--testing', action='store_true', help='flag to suppress CLI user confirmation for saving output; for test scripts')
+    parser.add_argument('--timing', action='store_true', help='flag to output timing information for select modules')
+    
     
     args = parser.parse_args()
 
@@ -271,13 +281,18 @@ def main(omni_CLI=False):
 
         # omni model needs 4 classes, but all the training regenerates this from scratch and just ignores saved CP flows. 
         if args.omni and args.train:
-            logger.info('Training omni model. Setting nclasses=4, RAdam=True')
-            
             # assume instance segmentation unless otherwise specified 
             if args.nclasses is None:
-                args.nclasses = 4
+                args.nclasses = 3 # now do not do boundary by default 
+                
             # args.dropout = True
-            args.RAdam = True
+            # args.RAdam = True
+            # args.RAdam = False
+            
+            logger.info('Training omni model. Setting nclasses={}, RAdam={}'.format(args.nclasses,args.RAdam))
+            
+
+            
 
         # EVALUATION BRANCH
         if not args.train and not args.train_size:
@@ -314,13 +329,13 @@ def main(omni_CLI=False):
                         args.mxnet = False
                 if not bacterial:                
                     model = models.Cellpose(gpu=gpu, device=device, model_type=args.pretrained_model, 
-                                            torch=(not args.mxnet), omni=args.omni, 
+                                            use_torch=(not args.mxnet), omni=args.omni, 
                                             net_avg=(not args.fast_mode and not args.no_net_avg))
                 else:
                     cpmodel_path = models.model_path(args.pretrained_model, 0, True)
                     model = models.CellposeModel(gpu=gpu, device=device, 
                                                  pretrained_model=cpmodel_path,
-                                                 torch=True,
+                                                 use_torch=True,
                                                  nclasses=args.nclasses, dim=args.dim, omni=args.omni,
                                                  net_avg=False)
             else:
@@ -328,7 +343,7 @@ def main(omni_CLI=False):
                     channels = None  
                 model = models.CellposeModel(gpu=gpu, device=device, 
                                              pretrained_model=cpmodel_path,
-                                             torch=True,
+                                             use_torch=True,
                                              nclasses=args.nclasses, dim=args.dim, omni=args.omni,
                                              net_avg=False)
             
@@ -460,6 +475,11 @@ def main(omni_CLI=False):
                 logger.info('during training rescaling images to fixed diameter of %0.1f pixels'%args.diameter)
                 
             # initialize model
+            import torch
+            # torch.use_deterministic_algorithms(True) need to set envoronment variable for this 
+            torch.manual_seed(42)
+            # torch.backends.cudnn.benchmark = False # slower somehow with True
+            
             if args.unet:
                 model = core.UnetModel(device=device,
                                         pretrained_model=cpmodel_path, 
@@ -472,7 +492,7 @@ def main(omni_CLI=False):
             else:
                 model = models.CellposeModel(device=device,
                                              gpu=gpu, # why was this not being passed in befrore?
-                                             torch=(not args.mxnet),
+                                             use_torch=(not args.mxnet),
                                              pretrained_model=cpmodel_path,
                                              diam_mean=szmean,
                                              residual_on=args.residual_on,
@@ -491,17 +511,29 @@ def main(omni_CLI=False):
             
             # train segmentation model
             if args.train:
+                # with torch.autograd.profiler.profile(use_cuda=True) as prof:
                 cpmodel_path = model.train(images, labels, links, train_files=image_names,
-                                           test_data=test_images, test_labels=test_labels, 
-                                           test_links=test_links, test_files=image_names_test,
-                                           learning_rate=args.learning_rate, channels=channels,
-                                           save_path=os.path.realpath(args.dir), save_every=args.save_every,
+                                           test_data=test_images, 
+                                           test_labels=test_labels, 
+                                           test_links=test_links, 
+                                           test_files=image_names_test,
+                                           learning_rate=args.learning_rate, 
+                                           channels=channels,
+                                           save_path=os.path.realpath(args.dir), 
+                                           save_every=args.save_every,
                                            save_each=args.save_each,
-                                           rescale=rescale,n_epochs=args.n_epochs,
+                                           rescale=rescale,
+                                           n_epochs=args.n_epochs,
                                            batch_size=args.batch_size, 
+                                           dataloader=args.dataloader,
+                                           num_workers=args.num_workers,
                                            min_train_masks=args.min_train_masks,
                                            SGD=(not args.RAdam),
-                                           tyx=args.tyx)
+                                           tyx=args.tyx,
+                                           timing=args.timing,
+                                           do_autocast=args.amp,
+                                           affinity_field=args.affinity_field)
+                # print(prof)
                 model.pretrained_model = cpmodel_path
                 logger.info('model trained and saved to %s'%cpmodel_path)
 

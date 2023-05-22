@@ -6,7 +6,7 @@ import tifffile
 import logging, pathlib, sys
 from pathlib import Path
 
-from csv import reader
+from csv import reader, writer
 
 try:
     from omnipose.utils import format_labels
@@ -89,6 +89,25 @@ def load_links(filename):
         return links
     else:
         return []
+
+def write_links(savedir,basename,links):
+    """
+    Write label link file. See load_links() for its output format. 
+    
+    Parameters
+    ----------
+    savedir: string
+        directory in which to save
+    basename: string
+        file name base to which _links.txt is appended. 
+    links: set
+        set of label tuples {(x,y),(z,w),...}
+
+    """
+    with open(os.path.join(savedir,basename+'_links.txt'), "w",newline='') as out:
+        csv_out = writer(out)
+        for row in links:
+            csv_out.writerow(row)
 
 def outlines_to_text(base, outlines):
     with open(base + '_cp_outlines.txt', 'w') as f:
@@ -287,19 +306,18 @@ def load_train_test_data(train_dir, test_dir=None, image_filter='', mask_filter=
     """
     
     image_names = get_image_files(train_dir, mask_filter, image_filter, look_one_level_down)
-    nimg = len(image_names)
-    images = [imread(image_names[n]) for n in range(nimg)]
+    nimg_train = len(image_names)
+    images = [imread(image_names[n]) for n in range(nimg_train)]
 
     label_names, flow_names, link_names = get_label_files(image_names, 
                                                           label_filter=mask_filter, 
                                                           img_filter=image_filter, 
                                                           flows=True, links=True)
-    nimg = len(image_names)
     labels = [imread(l) for l in label_names]
     links = [load_links(l) for l in link_names]
     
     if flow_names is not None and not unet and not omni:
-        for n in range(nimg):
+        for n in range(nimg_train):
             flows = imread(flow_names[n])
             if flows.shape[0]<4:
                 labels[n] = np.concatenate((labels[n][np.newaxis,:,:], flows), axis=0) 
@@ -307,7 +325,8 @@ def load_train_test_data(train_dir, test_dir=None, image_filter='', mask_filter=
                 labels[n] = flows
             
     # testing data
-    test_images, test_labels, test_links, image_names_test = [None]*4
+    nimg_test = 0
+    test_images, test_labels, test_links, image_names_test = None,None,[None],None 
     if test_dir is not None:
         image_names_test = get_image_files(test_dir, mask_filter, image_filter, look_one_level_down)
         label_names_test, flow_names_test, link_names_test = get_label_files(image_names_test, 
@@ -315,12 +334,12 @@ def load_train_test_data(train_dir, test_dir=None, image_filter='', mask_filter=
                                                                             img_filter=image_filter, 
                                                                             flows=True, links=True)
         
-        nimg = len(image_names_test)
-        test_images = [imread(image_names_test[n]) for n in range(nimg)]
-        test_labels = [imread(label_names_test[n]) for n in range(nimg)]
-        test_links = [load_links(link_names_test[n]) for n in range(nimg)]
+        nimg_test = len(image_names_test)
+        test_images = [imread(image_names_test[n]) for n in range(nimg_test)]
+        test_labels = [imread(label_names_test[n]) for n in range(nimg_test)]
+        test_links = [load_links(link_names_test[n]) for n in range(nimg_test)]
         if flow_names_test is not None and not unet:
-            for n in range(nimg):
+            for n in range(nimg_test):
                 flows = imread(flow_names_test[n])
                 if flows.shape[0]<4:
                     test_labels[n] = np.concatenate((test_labels[n][np.newaxis,:,:], flows), axis=0) 
@@ -329,8 +348,8 @@ def load_train_test_data(train_dir, test_dir=None, image_filter='', mask_filter=
     
     # Allow disabling the links even if link files were found 
     if not do_links:
-        links = None
-        test_links = None
+        links = [None]*nimg_train
+        test_links = [None]*nimg_test
     
     return images, labels, links, image_names, test_images, test_labels, test_links, image_names_test
 

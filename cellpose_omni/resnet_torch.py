@@ -12,6 +12,7 @@ import torch.utils.checkpoint as cp
 
 from . import transforms, io, dynamics, utils
 
+# I wanted to try out an ND implementation, so this is just for testing 
 CONVND = False
 # CONVND = True
 
@@ -31,6 +32,16 @@ except Exception as e:
 torch_GPU = torch.device('mps') if ARM else torch.device('cuda')
 torch_CPU = torch.device('cpu')
 
+
+try: # similar backward incompatibility where torch.mps does not even exist 
+    if ARM:
+        from torch.mps import empty_cache
+    else: 
+        from torch.cuda import empty_cache
+except Exception as e:
+    empty_cache = torch.cuda.empty_cache
+    print(e)
+    
 sz = 3 #kernel size, works as xy or xyz/xyt equally well 
 WEIGHT = 1e-4
 BIAS = 1e-4

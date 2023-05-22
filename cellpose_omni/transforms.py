@@ -636,13 +636,14 @@ def reshape_train_test(train_data, train_labels, test_data, test_labels, channel
             len(test_data) > 0 and len(test_data)==len(test_labels)):
         test_data = None
 
-    print('reshape_train_test',train_data[0].shape,channels,normalize,omni)
+    # print('reshape_train_test',train_data[0].shape,channels,normalize,omni)
     # make data correct shape and normalize it so that 0 and 1 are 1st and 99th percentile of data
     # reshape_and_normalize_data pads the train_data with an eplty channel axis if it doesn't have one (single channel images/volumes). 
     train_data, test_data, run_test = reshape_and_normalize_data(train_data, test_data=test_data, 
-                                                                 channels=channels, channel_axis=channel_axis,
+                                                                 channels=channels,
+                                                                 channel_axis=channel_axis,
                                                                  normalize=normalize, omni=omni, dim=dim)
-    print('reshape_train_test_2',train_data[0].shape)
+    # print('reshape_train_test_2',train_data[0].shape)
 
     if train_data is None:
         error_message = 'training data do not all have the same number of channels'
@@ -815,10 +816,9 @@ def pad_image_ND(img0, div=16, extra=1, dim=2):
     
     return I, subs
 
-
-def random_rotate_and_resize(X, Y=None, links=None, scale_range=1., gamma_range=0.5, tyx=None, 
+def random_rotate_and_resize(X, Y=None, scale_range=1., gamma_range=[.75,2.5], tyx=None, 
                              do_flip=True, rescale=None, unet=False,
-                             inds=None, omni=False, dim=2, nchan=1, nclasses=3, kernel_size=2):
+                             inds=None, omni=False, dim=2, nchan=1, nclasses=3, device=None):
     """ augmentation by random rotation and resizing
 
         X and Y are lists or arrays of length nimg, with dims channels x Ly x Lx (channels optional)
@@ -833,10 +833,6 @@ def random_rotate_and_resize(X, Y=None, links=None, scale_range=1., gamma_range=
             of Y is always nearest-neighbor interpolated (assumed to be masks or 0-1 representation).
             If Y.shape[0]==3 and not unet, then the labels are assumed to be [cell probability, Y flow, X flow]. 
             If unet, second channel is dist_to_bound.
-        
-        links: list of label links
-            lists of label pairs linking parts of multi-label object together
-            this is how omnipose gets around boudary artifacts druing image warps 
 
         scale_range: float (optional, default 1.0)
             Range of resizing of images for augmentation. Images are resized by
@@ -875,16 +871,9 @@ def random_rotate_and_resize(X, Y=None, links=None, scale_range=1., gamma_range=
         inds = np.arange(nimg)
     
     if omni and OMNI_INSTALLED:
-        n = 16
-        base = kernel_size
-        L = max(round(224/(base**4)),1)*(base**4) # rounds 224 up to the right multiple to work for base 
-        # not sure if 4 downsampling or 3, but the "multiple of 16" elsewhere makes me think it must be 4, 
-        # but it appears that multiple of 8 actually works? maybe the n=16 above conflates my experiments in 3D
-        if tyx is None:
-            tyx = (L,)*dim if dim==2 else (8*n,)+(8*n,)*(dim-1) #must be divisible by 2**3 = 8
-        return omnipose.core.random_rotate_and_resize(X, Y=Y, links=links, scale_range=scale_range, gamma_range=gamma_range,
+        return omnipose.core.random_rotate_and_resize(X, Y=Y, scale_range=scale_range, gamma_range=gamma_range,
                                                       tyx=tyx, do_flip=do_flip, rescale=rescale, inds=inds, 
-                                                      nchan=nchan, nclasses=nclasses)
+                                                      nchan=nchan)
     else:
         # backwards compatibility; completely 'stock', no gamma augmentation or any other extra frills. 
         # [Y[i][1:] for i in inds] is necessary because the original transform function does not use masks (entry 0). 

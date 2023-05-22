@@ -8,6 +8,11 @@ import cv2
 from scipy.stats import mode
 from . import transforms, dynamics, utils, metrics, io
 
+import omnipose
+
+from torchvf.losses import ivp_loss
+from multiprocessing import Pool, cpu_count
+from functools import partial
 
 # from focal_loss.focal_loss import FocalLoss
 
@@ -28,7 +33,7 @@ try:
     from torch import nn
     from torch.utils import mkldnn as mkldnn_utils
     TORCH_ENABLED = True
-    from .resnet_torch import torch_GPU, torch_CPU, CPnet, ARM
+    from .resnet_torch import torch_GPU, torch_CPU, CPnet, ARM, empty_cache
 except Exception as e:
     TORCH_ENABLED = False
     print('core.py torch import error',e)
@@ -112,26 +117,26 @@ class UnetModel():
     def __init__(self, gpu=False, pretrained_model=False,
                  diam_mean=30., net_avg=True, device=None,
                  residual_on=False, style_on=False, concatenation=True,
-                 nclasses=3, torch=True, nchan=2, dim=2, 
+                 nclasses=3, use_torch=True, nchan=2, dim=2, 
                  checkpoint=False, dropout=False, kernel_size=2):
         self.unet = True
-        if torch:
+        if use_torch:
             if not TORCH_ENABLED:
-                torch = False
-        self.torch = torch
+                use_torch = False
+        self.torch = use_torch
         self.mkldnn = None
         if device is None:
             sdevice, gpu = assign_device(torch, gpu)
         self.device = device if device is not None else sdevice
         if device is not None:
-            if torch:
+            if use_torch:
                 # device_gpu = self.device.type=='cuda'
                 device_gpu = self.device.type=='mps' if ARM else self.device.type=='cuda'
                 
             else:
                 device_gpu = self.device.device_type=='gpu'
         self.gpu = gpu if device is None else device_gpu
-        if torch and not self.gpu:
+        if use_torch and not self.gpu:
             self.mkldnn = check_mkl(self.torch)
         self.pretrained_model = pretrained_model
         self.diam_mean = diam_mean
@@ -271,6 +276,7 @@ class UnetModel():
         elif isinstance(rescale, float):
             rescale = rescale * np.ones(nimg)
         if nimg > 1:
+            tqdm.tqdm.unit_divisor = nimg
             iterator = trange(nimg, file=tqdm_out)
         else:
             iterator = range(nimg)
@@ -331,16 +337,18 @@ class UnetModel():
 
     def _to_device(self, x):
         if self.torch:
-            X = torch.from_numpy(x).float().to(self.device)
+            X = torch.tensor(x,device=self.device).float()
         else:
             #if x.dtype != 'bool':
             X = nd.array(x.astype(np.float32), ctx=self.device)
         return X
+    
 
     def _from_device(self, X):
         if self.torch:
             x = X.detach().cpu().numpy()
-            torch.cuda.empty_cache() # clear memeory after evaluation (confirmed working)
+            # clear memeory after evaluation (confirmed working)
+            # empty_cache() #could add overhead
         else:
             x = X.asnumpy()
         return x
@@ -713,6 +721,7 @@ class UnetModel():
             lbl = lbl[:,0]
         lbl = self._to_device(lbl)
         loss = 8 * 1./self.nclasses * self.criterion(y, lbl)
+        del lbl
         return loss
 
     def train(self, train_data, train_labels, train_files=None, 
@@ -728,7 +737,6 @@ class UnetModel():
                                                                                                    test_data, test_labels,
                                                                                                    channels, self.channel_axis, 
                                                                                                    normalize)
-        print('iii',train_data[0].shape)
         # add dist_to_bound to labels
         if self.nclasses==3:
             core_logger.info('computing boundary pixels')
@@ -783,7 +791,8 @@ class UnetModel():
             else:
                 kbest = 0
             if j%4==0:
-                core_logger.info('best threshold at cell_threshold = {} => boundary_threshold = {}, ap @ 0.5 = {}'.format(cell_threshold, boundary_thresholds[kbest], 
+                core_logger.info('best threshold at cell_threshold = {} => boundary_threshold = {}, ap @ 0.5 = {}'.format(cell_threshold, 
+                                                                                                                          boundary_thresholds[kbest], 
                                                                         aps[j,kbest,0]))   
         if self.nclasses==3: 
             jbest, kbest = np.unravel_index(aps.mean(axis=-1).argmax(), aps.shape[:2])
@@ -791,14 +800,19 @@ class UnetModel():
             jbest = aps.squeeze().mean(axis=-1).argmax()
             kbest = 0
         cell_threshold, boundary_threshold = cell_thresholds[jbest], boundary_thresholds[kbest]
-        core_logger.info('>>>> best overall thresholds: (cell_threshold = {}, boundary_threshold = {}); ap @ 0.5 = {}'.format(cell_threshold, boundary_threshold, 
+        core_logger.info('>>>> best overall thresholds: (cell_threshold = {}, boundary_threshold = {}); ap @ 0.5 = {}'.format(cell_threshold, 
+                                                                                                                              boundary_threshold, 
                                                           aps[jbest,kbest,0]))
         return cell_threshold, boundary_threshold
 
+    # import gc 
     def _train_step(self, x, lbl):
-        X = self._to_device(x)
+        # X = self._to_device(x)
+        X = x.clone()
         if self.torch:
-            self.optimizer.zero_grad() 
+            self.optimizer.zero_grad()
+            # https://towardsdatascience.com/optimize-pytorch-performance-for-speed-and-memory-efficiency-2022-84f453916ea6
+            # self.optimizer.zero_grad(set_to_none=True) does nothing 
             self.net.train()
             
             if self.autocast:
@@ -806,8 +820,9 @@ class UnetModel():
                     y = self.net(X)[0]
                     del X
                     loss = self.loss_fn(lbl,y)
+                    del lbl
                 self.scaler.scale(loss).backward()
-                train_loss = loss.item()
+                train_loss = loss.detach()
                 self.scaler.step(self.optimizer) 
                 train_loss *= len(x)
                 self.scaler.update()
@@ -815,10 +830,12 @@ class UnetModel():
                 y = self.net(X)[0]
                 del X
                 loss = self.loss_fn(lbl,y)
+                del lbl
                 loss.backward()
-                train_loss = loss.item()
+                train_loss = loss.detach() # added detach, probably redundant but trying to fix memory leak 
                 self.optimizer.step()
                 train_loss *= len(x)
+                # print('aa',train_loss)
         else:
             with mx.autograd.record():
                 y = self.net(X)[0]
@@ -827,6 +844,7 @@ class UnetModel():
             loss.backward()
             train_loss = nd.sum(loss).asscalar()
             self.optimizer.step(x.shape[0])
+        # gc.collect()
         return train_loss
 
     def _test_eval(self, x, lbl):
@@ -837,7 +855,7 @@ class UnetModel():
                 y, style = self.net(X)
                 del X
                 loss = self.loss_fn(lbl,y)
-                test_loss = loss.item()
+                test_loss = loss.detach()
                 test_loss *= len(x)
         else:
             y, style = self.net(X)
@@ -884,6 +902,7 @@ class UnetModel():
                 self.criterion14 = ArcCosDotLoss()
                 self.criterion15 = NormLoss()
                 self.criterion16 = DivergenceLoss()
+                self.criterion0 = ivp_loss.IVPLoss(dx=0.2,n_steps=2,device=self.device,mode='nearest_batched')
                 # self.ivp_loss =  ivp_loss.IVPLoss(dx=0.25,n_steps=8,device=self)
                 # self.criterion17 = nn.SoftmaxCrossEntropyLoss(axis=1)
                 # self.criterion17 = FocalLoss()
@@ -893,11 +912,13 @@ class UnetModel():
                 self.criterion2 = gluon.loss.SigmoidBinaryCrossEntropyLoss()
 
     # Restored defaults. Need to make sure rescale is properly turned off and omni turned on when using CLI. 
+    # maybe replace individual 
     def _train_net(self, train_data, train_labels, train_links, test_data=None, test_labels=None,
                    test_links=None, save_path=None, save_every=100, save_each=False,
                    learning_rate=0.2, n_epochs=500, momentum=0.9, weight_decay=0.00001, 
-                   SGD=True, batch_size=8, nimg_per_epoch=None, rescale=True, netstr=None, 
-                   do_autocast=False, tyx=None): 
+                   SGD=True, batch_size=8, dataloader=False, num_workers=8, nimg_per_epoch=None, 
+                   rescale=True, affinity_field=False,
+                   netstr=None, do_autocast=False, tyx=None, timing=False): 
         """ train function uses loss function self.loss_fn in models.py"""
         
         d = datetime.datetime.now()
@@ -931,9 +952,14 @@ class UnetModel():
         
         nimg = len(train_data)
         
-        # debug
-        # for k in range(len(train_labels)):
-        #     print('ggg',train_labels[k][0].shape, np.unique(train_labels[k][0]))
+        # Set crop size; should probably generalize to fix sizes that don't fit requirements  
+        n = 16
+        base = 2
+        L = max(round(224/(base**4)),1)*(base**4) # rounds 224 up to the right multiple to work for base 
+        # not sure if 4 downsampling or 3, but the "multiple of 16" elsewhere makes me think it must be 4, 
+        # but it appears that multiple of 8 actually works? maybe the n=16 above conflates my experiments in 3D
+        if tyx is None:
+            tyx = (L,)*self.dim if self.dim==2 else (8*n,)+(8*n,)*(self.dim-1) #must be divisible by 2**3 = 8
         
         # compute average cell diameter
         if rescale:
@@ -955,24 +981,21 @@ class UnetModel():
 
         nchan = train_data[0].shape[0]
         core_logger.info('>>>> training network with %d channel input <<<<'%nchan)
-        core_logger.info('>>>> LR: %0.5f, batch_size: %d, weight_decay: %0.5f'%(self.learning_rate_const, self.batch_size, weight_decay))
+        core_logger.info('>>>> LR: %0.5f, batch_size: %d, weight_decay: %0.5f'%(self.learning_rate_const, 
+                                                                                self.batch_size, weight_decay))
         
         if test_data is not None:
             core_logger.info(f'>>>> ntrain = {nimg}, ntest = {len(test_data)}')
         else:
             core_logger.info(f'>>>> ntrain = {nimg}')
         
-        tic = time.time()
-
-
-        lavg, nsum = 0, 0
+        t0 = time.time()
+        toc = t0
+        lsum, nsum = 0, 0
 
         if save_path is not None:
             _, file_label = os.path.split(save_path)
             file_path = os.path.join(save_path, 'models/')
-
-            # if not os.path.exists(file_path):
-            #     os.makedirs(file_path)
             io.check_dir(file_path)
         else:
             core_logger.warning('WARNING: no save_path given, model not saving')
@@ -996,71 +1019,232 @@ class UnetModel():
         if self.autocast:
             self.scaler = GradScaler()
         
+        if dataloader: 
+            # Generators
+            # some parameters like gamma_range are not opened up here, just left to defaults
+            # some are passed through the model parameters (self.omni etc)
+            kwargs = {'rescale': rescale, 
+                      'diam_train': diam_train if rescale else None,
+                      'tyx': tyx,
+                      'scale_range': scale_range,        
+                      'omni': self.omni,
+                      'dim': self.dim,
+                      'nchan': self.nchan,
+                      'nclasses': self.nclasses,
+                      'device': self.device,
+                      'affinity_field': affinity_field
+                     }
+            torch.multiprocessing.set_start_method('spawn')
+            
+            training_set = omnipose.dataset(train_data, train_labels, train_links, **kwargs)       
+
+            # reproducible batches 
+            torch.manual_seed(42)
+            
+            sampler = torch.utils.data.sampler.BatchSampler(torch.utils.data.sampler.RandomSampler(training_set),
+                                                            batch_size=batch_size,
+                                                            drop_last=False)
+            params = {'batch_size': batch_size,
+                      'shuffle': False, # use sampler instead
+                      'collate_fn': training_set.collate_fn,
+                      'worker_init_fn': training_set.worker_init_fn,
+                      'pin_memory': False, # was true 
+                      'num_workers': num_workers, # this probably makes sense only for large batches 
+                      'sampler': sampler,
+                      'persistent_workers': True if num_workers>0 else False,
+                      'drop_last': True, # this seems to help quite a lot, should print out info for users to know how much is left out 
+                      # 'prefetch_factor': 1 # seems to have no effect 
+                     }
+            
+            # drop last has an outsize effect, much more than the % dropped, and it is most noticable on dual GPU. I think this may be
+            # due to overhead etc. and it is much better 
+            
+            core_logger.info('>>>> Using torch dataloader. Can take a couple min to initialize. Using {} workers.'.format(num_workers))
+            
+            train_loader = torch.utils.data.DataLoader(training_set, **params)
+            
+            if test_data is not None:
+                print('will need to fix sampler')
+                validation_set = omnipose.dataset(test_data, test_labels, test_links, **kwargs)
+                validation_loader = torch.utils.data.DataLoader(validation_set, **params)
+
+        # for debugging
+        current_time = datetime.datetime.now()
+        formatted_time = current_time.strftime('%H:%M:%S')
+        core_logger.info('>>>> Start time: {}'.format(formatted_time))
+        
+        de = 2 # epoch print interval
+        iepoch0 = 0
+        epochtime = np.zeros(self.n_epochs)
+
+        # for weighting function
+        # blurrer = torchvision.transforms.GaussianBlur(kernel_size=11, sigma=2)
+
+        # edge handling requires distance field for cutoffs
+        # do this with batch?, turn off gradient return 
+        # dist = train_labels
+        
         for iepoch in range(self.n_epochs):    
             if SGD:
                 self._set_learning_rate(self.learning_rate[iepoch])
-            np.random.seed(iepoch)
-            rperm = inds_all[iepoch*nimg_per_epoch:(iepoch+1)*nimg_per_epoch]
-            for ibatch in range(0,nimg_per_epoch,batch_size):
-                inds = rperm[ibatch:ibatch+batch_size]
-                rsc = diam_train[inds] / self.diam_mean if rescale else np.ones(len(inds), np.float32)
-                # now passing in the full train array, need the labels for distance field
-                imgi, lbl, scale = transforms.random_rotate_and_resize([train_data[i] for i in inds], 
-                                                                       Y=[train_labels[i] for i in inds],
-                                                                       links= None if train_links is None else [train_links[i] for i in inds],
-                                                                       rescale=rsc, 
-                                                                       scale_range=scale_range, 
-                                                                       unet=self.unet, 
-                                                                       tyx=tyx, 
-                                                                       inds=inds,
-                                                                       omni=self.omni, 
-                                                                       dim=self.dim, 
-                                                                       nchan=self.nchan, 
-                                                                       nclasses=self.nclasses)
-                if self.unet and lbl.shape[1]>1 and rescale:
-                    lbl[:,1] /= diam_batch[:,np.newaxis,np.newaxis]**2
-                train_loss = self._train_step(imgi, lbl)
-                lavg += train_loss
-                nsum += len(imgi) 
             
-            if iepoch%10==0 or iepoch==5:
-                lavg = lavg / nsum
-                if test_data is not None:
-                    lavgt, nsum = 0., 0
-                    np.random.seed(42)
-                    rperm = np.arange(0, len(test_data), 1, int)
-                    for ibatch in range(0,len(test_data),batch_size):
-                        inds = rperm[ibatch:ibatch+batch_size]
-                        rsc = diam_test[inds] / self.diam_mean if rescale else np.ones(len(inds), np.float32)
-                        imgi, lbl, scale = transforms.random_rotate_and_resize([test_data[i] for i in inds], 
-                                                                               Y=[test_labels[i] for i in inds], 
-                                                                               links=[test_links[i] for i in inds],
-                                                                               rescale=rsc, 
-                                                                               scale_range=0., 
-                                                                               unet=self.unet, 
-                                                                               tyx=tyx, 
-                                                                               inds=inds,
-                                                                               omni=self.omni, 
-                                                                               dim=self.dim, 
-                                                                               nchan=self.nchan, 
-                                                                               nclasses=self.nclasses) 
-                        if self.unet and lbl.shape[1]>1 and rescale:
-                            lbl[:,1] *= scale[0]**2
+            np.random.seed(iepoch)
+            datatime = []
+            steptime = []
+            if dataloader:
+                for batch_data, batch_labels, batch_idx in train_loader:
+                    shape = batch_data.shape
 
-                        test_loss = self._test_eval(imgi, lbl)
-                        lavgt += test_loss
-                        nsum += len(imgi)
+                    tic = time.time()
 
-                    core_logger.info('Epoch %d, Time %4.1fs, Loss %2.4f, Loss Test %2.4f, LR %2.4f'%
-                            (iepoch, time.time()-tic, lavg, lavgt/nsum, self.learning_rate[iepoch]))
-                else:
-                    core_logger.info('Epoch %d, Time %4.1fs, Loss %2.4f, LR %2.4f'%
-                            (iepoch, time.time()-tic, lavg, self.learning_rate[iepoch]))
-                
-                lavg, nsum = 0, 0
-                            
+                    # print('\t Batch number',batch_idx)
+
+                    nbatch = len(batch_data)
+                    dt = tic-toc
+                    datatime += [dt]
+                    if timing:
+                        print('\t Dataloading time (dataloader): {:.2f}'.format(dt))
+                    train_loss = self._train_step(batch_data, batch_labels)
+
+                    dt = time.time()-tic
+                    steptime += [dt] 
+                    if timing:
+                        print('\t Step time: {:.2f}, batch size {}'.format(dt,len(batch_data)))
+
+                    lsum += train_loss
+                    nsum += nbatch 
+
+            else:
+                rperm = inds_all[iepoch*nimg_per_epoch:(iepoch+1)*nimg_per_epoch]
+                for ibatch in range(0,nimg_per_epoch,batch_size):
+                    tic = time.time() 
+                    inds = rperm[ibatch:ibatch+batch_size]
+                    rsc = diam_train[inds] / self.diam_mean if rescale else np.ones(len(inds), np.float32)
+                    # now passing in the full train array, need the labels for distance field
+                    imgi, lbl, scale = transforms.random_rotate_and_resize([train_data[i] for i in inds], 
+                                                                           Y=[train_labels[i] for i in inds],
+                                                                           rescale=rsc, 
+                                                                           scale_range=scale_range, 
+                                                                           unet=self.unet, 
+                                                                           tyx=tyx, 
+                                                                           inds=inds,
+                                                                           omni=self.omni, 
+                                                                           dim=self.dim, 
+                                                                           nchan=self.nchan, 
+                                                                           nclasses=self.nclasses, 
+                                                                           device=self.device)
+                    
+                    
+                    t2 = time.time()
+                    # new parallized approach: random warp+ image augmentation, batch flows
+                    links = [train_links[idx] for idx in inds]
+                    
+                    out = omnipose.core.masks_to_flows_batch(lbl, links, 
+                                                             device=self.device, 
+                                                             omni=self.omni, 
+                                                             dim=self.dim,
+                                                             affinity_field=affinity_field
+                                                            )[:-2]
+                    
+                    X = out[:-1]
+                    slices = out[-1]
+                    masks,bd,T,mu = [torch.stack([x[(Ellipsis,)+slc] for slc in slices]) for x in X]
+                    lbl = omnipose.core.batch_labels(masks,bd,T,mu,tyx,
+                                                     dim=self.dim,
+                                                     nclasses=self.nclasses,
+                                                     device=self.device)
+      
+
+                    dt = time.time()-tic
+                    datatime += [dt]
+                    if timing:
+                        print('\t Dataloading time (Cellpose): {:.2f}'.format(dt))
+                    nbatch = len(imgi) 
+
+                    if self.unet and lbl.shape[1]>1 and rescale:
+                        lbl[:,1] /= diam_batch[:,np.newaxis,np.newaxis]**2
+
+                    tic = time.time()
+                    # train step now expects tensors
+                    # train_loss = self._train_step( self._to_device(imgi),  self._to_device(lbl))
+                    # train_loss = self._train_step( torch.stack(imgi).to(self.device), torch.stack(lbl).to(self.device))
+                    # train_loss = self._train_step( self._to_device(np.stack(imgi)),  self._to_device(np.stack(lbl)))
+                    train_loss = self._train_step(self._to_device(np.stack(imgi)),lbl)
+
+
+                    dt = time.time()-tic
+                    steptime += [dt]
+                    if timing:
+                        print('\t Step time: {:.2f}, batch size {}'.format(dt,len(imgi)))
+
+                    lsum += train_loss
+                    nsum += nbatch
+
+#                 tic = time.time()
+#                 if iepoch%de==0 or iepoch==5:
+#                     lavg = lavg / nsum
+#                     if test_data is not None:
+#                         lavgt, nsum = 0., 0
+#                         np.random.seed(42)
+#                         rperm = np.arange(0, len(test_data), 1, int)
+#                         for ibatch in range(0,len(test_data),batch_size):
+#                             inds = rperm[ibatch:ibatch+batch_size]
+#                             rsc = diam_test[inds] / self.diam_mean if rescale else np.ones(len(inds), np.float32)
+#                             imgi, lbl, scale = transforms.random_rotate_and_resize([test_data[i] for i in inds], 
+#                                                                                    Y=[test_labels[i] for i in inds], 
+#                                                                                    links=[test_links[i] for i in inds],
+#                                                                                    rescale=rsc, 
+#                                                                                    scale_range=0., 
+#                                                                                    unet=self.unet, 
+#                                                                                    tyx=tyx, 
+#                                                                                    inds=inds,
+#                                                                                    omni=self.omni, 
+#                                                                                    dim=self.dim, 
+#                                                                                    nchan=self.nchan, 
+#                                                                                    nclasses=self.nclasses,
+#                                                                                    device=self.device)
+#                             if self.unet and lbl.shape[1]>1 and rescale:
+#                                 lbl[:,1] *= scale[0]**2
+
+#                             test_loss = self._test_eval(imgi, lbl)
+#                             lavgt += test_loss
+#                             nsum += len(imgi)
+
+#                         core_logger.info('Epoch %d, Time %4.1fmin, Loss %2.4f, Loss Test %2.4f, LR %2.4f, Time per Epoch %3.1fs'%
+#                                 (iepoch, (tic-t0) / 60 , lavg, lavgt/nsum, self.learning_rate[iepoch], (tic-toc) / de))
+#                     else:
+#                         core_logger.info('Epoch %d, Time %4.1fmin, Loss %2.4f, LR %2.4f, Time per Epoch %3.1fs, Avg batch loading time: %3.1fs'%
+#                                 (iepoch, (tic-t0) / 60 , lavg, self.learning_rate[iepoch], (tic-toc) / de, np.mean(datatime)))
+
+#                     toc = time.time() # end of batch 
+#                     lavg, nsum = 0, 0
+
+            tic = time.time()
+            epochtime[iepoch] = tic
+            if iepoch % de == 0:
+                print(
+                    ("Train epoch: {} | "
+                    "Time: {:.2f}min | "
+                    "last epoch: {:.2f}s | "
+                    "<sec/epoch>: {:.2f}s | "
+                    "<sec/batch>: {:.2f}s | "
+                    "<Batch Loss>: {:.6f} | "
+                    "<Epoch Loss>: {:.6f} ").
+                    format(iepoch, # epoch index 
+                           (tic-t0) / 60, # absolute time spent in minutes 
+                           0 if iepoch==iepoch0 else (tic-toc) / (iepoch-iepoch0), # time spent in this epoch 
+                           # (tic-t0) / (iepoch+1), # average time per epoch 
+                           0 if iepoch==iepoch0 else np.mean(np.diff(epochtime[max(0,iepoch-3):max(1,iepoch)])),
+                           np.mean(datatime[-3:]), # average time spent loading fata for last 3 epochs 
+                           train_loss/nbatch, # average loss over this batch 
+                           lsum/nsum) # average loss over this epoch 
+                )
+            iepoch0 = iepoch
+            toc = time.time() # end of batch 
+            lsum, nsum = 0, 0
+
             if save_path is not None:
-                if iepoch==self.n_epochs-1 or iepoch%save_every==1:
+                if iepoch==self.n_epochs-1 or iepoch%save_every==0:
                     # save model at the end
                     if save_each: #separate files as model progresses 
                         if netstr is None:
@@ -1077,7 +1261,7 @@ class UnetModel():
                     file_name = os.path.join(file_path, file_name)
                     ksave += 1
                     core_logger.info(f'saving network parameters to {file_name}')
-                    
+
                     # self.net.save_model(file_name)
                     # whether or not we are using dataparallel 
                     # this logic appears elsewhere in models.py
@@ -1085,7 +1269,7 @@ class UnetModel():
                         self.net.module.save_model(file_name)
                     else:
                         self.net.save_model(file_name)
-                    
+
             else:
                 file_name = save_path
 
@@ -1108,7 +1292,8 @@ class DerivativeLoss(torch.nn.Module):
         # print('dims',dim,dims)
         dy = torch.stack(torch.gradient(y,dim=dims))
         dY = torch.stack(torch.gradient(Y,dim=dims))
-        return torch.mean(torch.sum(torch.square((dy-dY)/5.),axis=0)[mask]*w[mask])    
+        sel = torch.where(mask) # read that masked selection could be causing this 
+        return torch.mean(torch.sum(torch.square((dy-dY)/5.),axis=0)[sel]*w[sel])    
     
 class WeightedLoss(torch.nn.Module):
     def __init__(self):
@@ -1124,7 +1309,8 @@ class MaskedLoss(torch.nn.Module):
 
     def forward(self,y,Y,mask):
         diff = (y-Y)/5.
-        return torch.mean(torch.square(diff[mask]))
+        sel = torch.where(mask).detach() # read that masked selection could be causing this 
+        return torch.mean(torch.square(diff[sel]))
         
 # I suspect that, of all the loss functions, this one would be the one that suffers most from 16 bit precision 
 class ArcCosDotLoss(torch.nn.Module):
@@ -1136,7 +1322,11 @@ class ArcCosDotLoss(torch.nn.Module):
         denom = torch.multiply(torch_norm(x,dim=1),torch_norm(y,dim=1))+eps
         dot = torch.sum(torch.stack([x[:,k]*y[:,k] for k in range(x.shape[1])],axis=1),axis=1)
         phasediff = torch.acos(torch.clip(dot/denom,-0.999999,0.999999))/3.141549
-        return torch.mean((torch.square(phasediff[mask]))*w[mask])
+        # sel = torch.where(mask.detach()) # read that masked selection could be causing this 
+        
+        # return torch.mean((torch.square(phasediff[sel]))*w[sel])
+        return torch.mean((torch.square(phasediff))*w)
+    
     
 class NormLoss(torch.nn.Module):
     def __init__(self):
@@ -1146,7 +1336,11 @@ class NormLoss(torch.nn.Module):
         ny = torch_norm(y,dim=1,keepdim=False)/5.
         nY = torch_norm(Y,dim=1,keepdim=False)/5.
         diff = (ny-nY)
-        return torch.mean(torch.square(diff[mask])*w[mask])
+        # masked selection causes memory leak on MPS
+        # sel = torch.where(mask)
+        # return torch.mean(torch.square(diff[sel])*w[sel])
+        return torch.mean(torch.square(diff)*w)
+        
 
 def torch_norm(a,dim=1,keepdim=False):
     if ARM: 
@@ -1165,8 +1359,16 @@ class DivergenceLoss(torch.nn.Module):
         if mask is None:
             mask = torch.abs(divY)>1
         diff = (divY - divy)/5.
-        return torch.mean(torch.square(diff[mask]))
-
+        sel = torch.where(mask) # read that masked selection could be causing this 
+        # return torch.mean(torch.square(torch.masked_select(diff,mask>0)))
+        # return torch.mean(torch.square(diff))
+        r = diff[mask>0]
+        ret = torch.mean(torch.square(r))
+        del diff, mask, r
+        
+        return ret
+        
+        # return torch.mean(torch.square(diff[sel]))
 
 def divergence(y):
     axes = [k for k in range(len(y[0]))] #note that this only works when there are at least two images in batch 

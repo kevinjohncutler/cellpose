@@ -69,7 +69,8 @@ def dx_to_circ(dP,transparency=False,mask=None,sinebow=True,norm=True):
     return im
 
 def show_segmentation(fig, img, maski, flowi, bdi=None, channels=None, file_name=None, omni=False, 
-                      seg_norm=False, bg_color=None, channel_axis=-1, display=True):
+                      seg_norm=False, bg_color=None, outline_color=[1,0,0], channel_axis=-1, 
+                      display=True, interpolation='bilinear'):
     """ plot segmentation results (like on website)
     
     Can save each panel of figure with file_name option. Use channels option if
@@ -157,33 +158,34 @@ def show_segmentation(fig, img, maski, flowi, bdi=None, channels=None, file_name
         
         
     if display:
-        c = [0.5]*3
+        fontsize = fig.get_figwidth()
+        c = [0.5]*3 # use gray color that will work for both dark and light themes 
         if not MATPLOTLIB_ENABLED:
             raise ImportError("matplotlib not installed, install with 'pip install matplotlib'")
         ax = fig.add_subplot(1,4,1)
-        ax.imshow(img0)
-        ax.set_title('original image',c=c)
+        ax.imshow(img0,interpolation=interpolation)
+        ax.set_title('original image',c=c,fontsize=fontsize)
         ax.axis('off')
         ax = fig.add_subplot(1,4,2)
-        outX, outY = np.nonzero(outlines)
-        imgout= img0.copy()
-        imgout[outX, outY] = np.array([255,0,0]) # pure red
+        outli = np.stack([outlines*c for c in outline_color]+[outlines],axis=-1)*255     
 
-        ax.imshow(imgout)
-        ax.set_title('predicted outlines',c=c)
+        ax.imshow(img0,interpolation=interpolation)
+        ax.imshow(outli,interpolation='none')
+        
+        ax.set_title('predicted outlines',c=c,fontsize=fontsize)
         ax.axis('off')
 
         ax = fig.add_subplot(1,4,3)
-        ax.imshow(overlay)
-        ax.set_title('predicted masks',c=c)
+        ax.imshow(overlay, interpolation='none')
+        ax.set_title('predicted masks',c=c,fontsize=fontsize)
         ax.axis('off')
 
         ax = fig.add_subplot(1,4,4)
         if bg_color is not None:
             ax.imshow(np.ones_like(flowi)*bg_color)
 
-        ax.imshow(flowi)
-        ax.set_title('predicted flow field',c=c)
+        ax.imshow(flowi,interpolation=interpolation)
+        ax.set_title('predicted flow field',c=c,fontsize=fontsize)
         ax.axis('off')
     
     else:

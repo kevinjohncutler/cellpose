@@ -7,8 +7,12 @@ from tqdm.auto import tqdm, trange
 
 from urllib.parse import urlparse
 import torch
-from torch import nn, distributed
+from torch import nn, distributed, multiprocessing, optim 
+
+
 # from torch.nn.parallel import DistributedDataParallel as DDP
+
+
 
 from scipy.ndimage import gaussian_filter, zoom
 
@@ -81,12 +85,12 @@ class Cellpose():
 
     """
     def __init__(self, gpu=False, model_type='cyto', net_avg=True, device=None, 
-                 torch=True, model_dir=None, dim=2, omni=None):
+                 use_torch=True, model_dir=None, dim=2, omni=None):
         super(Cellpose, self).__init__()
         if not torch:
             if not MXNET_ENABLED:
-                torch = True
-        self.torch = torch
+                use_torch = True
+        self.torch = use_torch
         
         # assign device (GPU or CPU)
         sdevice, gpu = assign_device(self.torch, gpu)
@@ -125,7 +129,7 @@ class Cellpose():
 
         self.cp = CellposeModel(device=self.device, gpu=self.gpu,
                                 pretrained_model=self.pretrained_model,
-                                diam_mean=self.diam_mean, torch=self.torch, 
+                                diam_mean=self.diam_mean, use_torch=self.torch, 
                                 dim=self.dim, omni=self.omni)
         self.cp.model_type = model_type
 
@@ -378,15 +382,15 @@ class CellposeModel(UnetModel):
     """
     
     def __init__(self, gpu=False, pretrained_model=False,
-                 model_type=None, net_avg=True, torch=True,
+                 model_type=None, net_avg=True, use_torch=True,
                  diam_mean=30., device=None,
                  residual_on=True, style_on=True, concatenation=False,
                  nchan=2, nclasses=3, dim=2, omni=False, 
                  checkpoint=False, dropout=False, kernel_size=2):
         if not torch:
             if not MXNET_ENABLED:
-                torch = True
-        self.torch = torch
+                use_torch = True
+        self.torch = use_torch
         # print('torch is', torch) # duplicated in unetmodel claass
         if isinstance(pretrained_model, np.ndarray):
             pretrained_model = list(pretrained_model)
@@ -443,17 +447,18 @@ class CellposeModel(UnetModel):
         
         # Omni models have 4D output for 2D images, 5D for 3D images, etc. (flow compinents increase with dimension)
         # Note that omni can still be used independently for evaluation to 'mix and match'
-        #would be better just to read from the model 
-        if self.omni and nclasses !=1:
-            self.nclasses = self.dim + 2          
+        # would be better just to read from the model 
+        if self.omni:
+            if nclasses == 4: # do boundary field
+                self.nclasses = self.dim + 2          
+            if nclasses == 3: # no boundary field
+                self.nclasses = self.dim + 1 
 
         # initialize network
-        
-
         super().__init__(gpu=gpu, pretrained_model=False,
                          diam_mean=self.diam_mean, net_avg=net_avg, device=device,
                          residual_on=residual_on, style_on=style_on, concatenation=concatenation,
-                         nclasses=self.nclasses, torch=self.torch, nchan=self.nchan, 
+                         nclasses=self.nclasses, use_torch=self.torch, nchan=self.nchan, 
                          dim=self.dim, checkpoint=self.checkpoint, dropout=self.dropout,
                          kernel_size=self.kernel_size)
 
@@ -462,9 +467,8 @@ class CellposeModel(UnetModel):
         self.pretrained_model = pretrained_model
 
         if self.pretrained_model and len(self.pretrained_model)==1:
-
             
-            # # dataparallel
+            # dataparallel A1
             # if self.torch and self.gpu:
             #     net = self.net.module
             # else:
@@ -485,15 +489,23 @@ class CellposeModel(UnetModel):
                                                                                    ostr[style_on],
                                                                                    ostr[concatenation],
                                                                                    omnistr[omni],self.nclasses) 
-
         
         if self.torch and gpu:
             self.net = nn.DataParallel(self.net)
             
+            #A1
             # distributed.init_process_group()
             # distributed.launch
-            # distributed.init_process_group(backend='nccl')
+            # distributed.init_process_group(backend='nccl',rank=0,world_size=2)
             # self.net = nn.parallel.DistributedDataParallel(self.net)
+#             rank = 0 # one computer
+#             world_size = 1
+#             setup(rank, world_size)
+#             # distributed.init_process_group('nccl', 
+#             #                        init_method='env://')
+#             self.net = DDP(self.net,
+#                            device_ids=[rank],
+#                            output_device=rank)
             
             
     # eval contains most of the tricky code handling all the cases for nclasses 
@@ -648,9 +660,10 @@ class CellposeModel(UnetModel):
             for i in iterator:
                 maski, stylei, flowi = self.eval(x[i], 
                                                  batch_size=batch_size, 
-                                                 channels= channels if channels is None else channels[i] if (len(channels)==len(x) and 
-                                                                          (isinstance(channels[i], list) or isinstance(channels[i], np.ndarray)) and
-                                                                          len(channels[i])==2) else channels, 
+                                                 channels = channels if channels is None else channels[i] if (len(channels)==len(x) and
+                                                                                                              (isinstance(channels[i], list) or 
+                                                                                                               isinstance(channels[i], np.ndarray)) and
+                                                                                                              len(channels[i])==2) else channels, 
                                                  channel_axis=channel_axis, 
                                                  z_axis=z_axis, 
                                                  normalize=normalize, 
@@ -693,11 +706,11 @@ class CellposeModel(UnetModel):
 
                 # whether or not we are using dataparallel 
                 if self.torch and self.gpu:
-                    # print('using dataparallel')
+                    print('using dataparallel')
                     net = self.net.module
                 else:
                     net = self.net
-                    # print('not using dataparallel')
+                    print('not using dataparallel')
                     
                 
                 net.load_model(self.pretrained_model[0], cpu=(not self.gpu))
@@ -765,7 +778,7 @@ class CellposeModel(UnetModel):
                 mask_threshold=0.0, diam_threshold=12., flow_threshold=0.4, niter=None, flow_factor=5.0, min_size=15,
                 interp=True, cluster=False, boundary_seg=False, affinity_seg=False,
                 anisotropy=1.0, do_3D=False, stitch_threshold=0.0,
-                omni=False, calc_trace=False, verbose=False):
+                omni=False, calc_trace=False, verbose=False, pad=0):
         
         tic = time.time()
         shape = x.shape
@@ -773,7 +786,6 @@ class CellposeModel(UnetModel):
         bd, tr, affinity = None, None, None
         
         # set up image padding for prediction 
-        pad = 3
         pad_seq = [(pad,)*2]*self.dim + [(0,)*2] # do not pad channel axis 
         unpad = tuple([slice(pad,-pad) if pad else slice(None,None)]*self.dim) # works in case pad is zero
         
@@ -1023,8 +1035,9 @@ class CellposeModel(UnetModel):
               channels=None, channel_axis=0, normalize=True, 
               save_path=None, save_every=100, save_each=False,
               learning_rate=0.2, n_epochs=500, momentum=0.9, SGD=True,
-              weight_decay=0.00001, batch_size=8, nimg_per_epoch=None,
-              rescale=True, min_train_masks=5, netstr=None, tyx=None):
+              weight_decay=0.00001, batch_size=8, dataloader=False, num_workers=0, nimg_per_epoch=None,
+              rescale=True, min_train_masks=5, netstr=None, tyx=None, timing=False, do_autocast=False,
+              affinity_field=False):
 
         """ train network with images train_data 
         
@@ -1105,6 +1118,16 @@ class CellposeModel(UnetModel):
                 
 
         """
+        
+        # torch.backends.cudnn.benchmark = True
+        
+        # rank = args.nr * args.gpus + gpu        
+        # distributed.init_process_group(backend='nccl',                                         
+        #                                 init_method='env://',                                   
+        #                                 world_size=args.world_size,                              
+        #                                 rank=rank                                               
+        #                         )    
+        
         if rescale:
             models_logger.info(f'Training with rescale = {rescale:.2f}')
         # images may need some dimension shuffling to conform to standard, this is link-independent 
@@ -1124,18 +1147,22 @@ class CellposeModel(UnetModel):
             
             # We assume that if links are given, labels are properly formatted as 0,1,2,...,N
             # might be worth implementing a remapping for the links just in case...
-            if train_links is None:
-                train_labels = [omnipose.utils.format_labels(label) for label in train_labels]
+            # for now, just skip this for any labels that come with a link file 
+            for i,(labels,links) in enumerate(zip(train_labels,train_links)):
+                if links is None:
+                    train_labels[i] = omnipose.utils.format_labels(labels)
             
             # nmasks is inflated when using multi-label objects, so keep that in mind if you care about min_train_masks 
             nmasks = np.array([label.max() for label in train_labels])
 
         else:
-            train_labels = labels_to_flows(train_labels, train_links, files=train_files, use_gpu=self.gpu, device=self.device, dim=self.dim)
+            train_labels = labels_to_flows(train_labels, train_links, files=train_files, 
+                                           use_gpu=self.gpu, device=self.device, dim=self.dim)
             nmasks = np.array([label[0].max() for label in train_labels])
 
         if run_test:
-            test_labels = labels_to_flows(test_labels, test_links, files=test_files, use_gpu=self.gpu, device=self.device, dim=self.dim)
+            test_labels = labels_to_flows(test_labels, test_links, files=test_files, 
+                                          use_gpu=self.gpu, device=self.device, dim=self.dim)
         else:
             test_labels = None
 
@@ -1145,7 +1172,8 @@ class CellposeModel(UnetModel):
             ikeep = np.nonzero(nmasks >= min_train_masks)[0]
             train_data = [train_data[i] for i in ikeep]
             train_labels = [train_labels[i] for i in ikeep]
-
+            train_links = [train_links[i] for i in ikeep]
+            
         if channels is None:
             models_logger.warning('channels is set to None, input must therefore have nchan channels (default is 2)')
         model_path = self._train_net(train_data, train_labels, train_links, 
@@ -1153,8 +1181,9 @@ class CellposeModel(UnetModel):
                                      save_path=save_path, save_every=save_every, save_each=save_each,
                                      learning_rate=learning_rate, n_epochs=n_epochs, 
                                      momentum=momentum, weight_decay=weight_decay, 
-                                     SGD=SGD, batch_size=batch_size, nimg_per_epoch=nimg_per_epoch, 
-                                     rescale=rescale, netstr=netstr,tyx=tyx)
+                                     SGD=SGD, batch_size=batch_size, dataloader=dataloader, num_workers=num_workers, 
+                                     nimg_per_epoch=nimg_per_epoch, do_autocast=do_autocast, affinity_field=affinity_field,
+                                     rescale=rescale, netstr=netstr, tyx=tyx, timing=timing)
         self.pretrained_model = model_path
         return model_path
 
