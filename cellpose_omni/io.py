@@ -295,7 +295,7 @@ def get_label_files(img_names, label_filter='_cp_masks', img_filter='', ext=None
                 link_paths.append(paths[idx])
             
         ret += [link_paths]
-    return (*ret,)
+    return (*ret,) if len(ret)>1 else ret[0]
 
 # edited to allow omni to not read in training flows if any exist; flows computed on-the-fly and code expects this 
 # futher edited to automatically find link files for boundary or timelapse flow generation 

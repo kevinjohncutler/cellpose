@@ -1445,9 +1445,9 @@ class MainW(QMainWindow):
         if event.key() == QtCore.Qt.Key_Minus or event.key() == QtCore.Qt.Key_Equal:
             self.p0.keyPressEvent(event)
 
-    def check_gpu(self, torch=True):
+    def check_gpu(self, use_torch=True):
         # also decide whether or not to use torch
-        self.torch = torch
+        self.torch = use_torch
         self.useGPU.setChecked(False)
         self.useGPU.setEnabled(False)    
         if self.torch and core.use_gpu(use_torch=True):
@@ -2517,17 +2517,17 @@ class MainW(QMainWindow):
         if self.current_model in models.MODEL_NAMES:
             if self.SizeModel.isChecked():
                 self.model = models.Cellpose(gpu=self.useGPU.isChecked(),
-                                             torch=self.torch,
+                                             use_torch=self.torch,
                                              model_type=self.current_model)
             else:
                 self.model = models.CellposeModel(gpu=self.useGPU.isChecked(),
-                                                  torch=self.torch,
+                                                  use_torch=self.torch,
                                                   model_type=self.current_model)
             # self.SizeButton.setEnabled(self.SizeModel.isChecked()) #disabled
         else:
 
             self.model = models.CellposeModel(gpu=self.useGPU.isChecked(), 
-                                              torch=True,
+                                              use_torch=True,
                                               pretrained_model=self.current_model_path)
             # self.SizeButton.setEnabled(False) #disabled 
 

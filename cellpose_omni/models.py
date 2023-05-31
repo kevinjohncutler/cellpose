@@ -425,6 +425,10 @@ class CellposeModel(UnetModel):
             elif bacterial or plant:
                 #self.diam_mean = 0.
                 net_avg = False # No bacterial, plant, or omni models have additional models
+            
+            # original omni models had the boundary field 
+            if model_type in ['bact_phase_omni','bact_fluor_omni','cyto2_omni','plant_omni']:
+                nclasses = 4 
 
             # set omni flag to true if the name contains it
             self.omni = 'omni' in os.path.splitext(Path(pretrained_model_string).name)[0]
@@ -445,9 +449,7 @@ class CellposeModel(UnetModel):
                     residual_on, style_on, concatenation = params 
                 self.omni = 'omni' in os.path.splitext(Path(pretrained_model_string).name)[0]
         
-        # Omni models have 4D output for 2D images, 5D for 3D images, etc. (flow compinents increase with dimension)
-        # Note that omni can still be used independently for evaluation to 'mix and match'
-        # would be better just to read from the model 
+        
         if self.omni:
             if nclasses == 4: # do boundary field
                 self.nclasses = self.dim + 2          

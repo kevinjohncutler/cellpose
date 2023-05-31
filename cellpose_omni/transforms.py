@@ -816,7 +816,7 @@ def pad_image_ND(img0, div=16, extra=1, dim=2):
     
     return I, subs
 
-def random_rotate_and_resize(X, Y=None, scale_range=1., gamma_range=[.75,2.5], tyx=None, 
+def random_rotate_and_resize(X, Y=None, scale_range=1., gamma_range=[.5,4], tyx=None, 
                              do_flip=True, rescale=None, unet=False,
                              inds=None, omni=False, dim=2, nchan=1, nclasses=3, device=None):
     """ augmentation by random rotation and resizing
