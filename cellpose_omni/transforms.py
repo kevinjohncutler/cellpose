@@ -406,6 +406,20 @@ def move_axis(img, m_axis=-1, first=True):
     img = img.transpose(tuple(axes))
     return img
 
+# more flexible replacement 
+def move_axis_new(a, axis, pos):
+    """Move ndarray axis to new location, preserving order of other axes."""
+    # Get the current shape of the array
+    shape = a.shape
+    
+    # Create the permutation order for numpy.transpose()
+    perm = list(range(len(shape)))
+    perm.pop(axis)
+    perm.insert(pos, axis)
+    
+    # Transpose the array based on the permutation order
+    return np.transpose(a, perm)
+
 # This was edited to fix a bug where single-channel images of shape (y,x) would be 
 # transposed to (x,y) if x<y, making the labels no longer correspond to the data. 
 def move_min_dim(img, force=False):
@@ -636,13 +650,16 @@ def reshape_train_test(train_data, train_labels, test_data, test_labels, channel
             len(test_data) > 0 and len(test_data)==len(test_labels)):
         test_data = None
 
-    # print('reshape_train_test',train_data[0].shape,channels,normalize,omni)
+    # print('reshape_train_test',train_data[0].shape,channels,channel_axis,normalize,omni)
     # make data correct shape and normalize it so that 0 and 1 are 1st and 99th percentile of data
-    # reshape_and_normalize_data pads the train_data with an eplty channel axis if it doesn't have one (single channel images/volumes). 
-    train_data, test_data, run_test = reshape_and_normalize_data(train_data, test_data=test_data, 
+    # reshape_and_normalize_data pads the train_data with an empty channel axis if it doesn't have one (single channel images/volumes). 
+    train_data, test_data, run_test = reshape_and_normalize_data(train_data, 
+                                                                 test_data=test_data, 
                                                                  channels=channels,
                                                                  channel_axis=channel_axis,
-                                                                 normalize=normalize, omni=omni, dim=dim)
+                                                                 normalize=normalize, 
+                                                                 omni=omni, 
+                                                                 dim=dim)
     # print('reshape_train_test_2',train_data[0].shape)
 
     if train_data is None:
@@ -698,9 +715,9 @@ def reshape_and_normalize_data(train_data, test_data=None, channels=None, channe
         nimg = len(data)
         # print('reshape_and_normalize_data',nimg,channels,data[0].shape)
         for i in range(nimg):
-            if channels is not None:
-                data[i] = move_min_dim(data[i], force=True) ## consider changign this to just use the channel_axis, not min dim 
-            # print('3454354',data[i].shape)
+            if channels is None:
+                # data[i] = move_min_dim(data[i], force=True) ## consider changign this to just use the channel_axis, not min dim 
+                data[i] = move_axis_new(data[i], axis=channel_axis, pos=0) 
             if channels is not None:
                 data[i] = reshape(data[i], channels=channels, chan_first=True, channel_axis=channel_axis) # the cuplrit with 3D
                 # print('fgddgfgdfg',data[i].shape)
@@ -710,15 +727,13 @@ def reshape_and_normalize_data(train_data, test_data=None, channels=None, channe
             # we actually want this padding for single-channel volumes too
             
             # data with multiple channels will have channels defined and have an axis already; could also pass in nchan to avoid this assumption 
+            # instead of this, we could just make the other parts of the code not rely on a channel axis and slice smarter 
             if channels is None and data[i].ndim==dim: 
                 data[i] = data[i][np.newaxis]
             
-            # instead of this, we could just make the other parts of the code not rely on a channel axis and slice smarter 
-            
             if normalize:
                 data[i] = normalize_img(data[i], axis=0, omni=omni)
-        nchan = [data[i].shape[0] for i in range(nimg)]
-    print('reshape_and_normalize_data_2',nimg,channels,data[0].shape,train_data[0].shape)
+
     return train_data, test_data, True
 
 def resize_image(img0, Ly=None, Lx=None, rsz=None, interpolation=cv2.INTER_LINEAR, no_channels=False):

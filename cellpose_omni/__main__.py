@@ -81,8 +81,9 @@ def main(omni_CLI=False):
     model_args = parser.add_argument_group("model arguments")
     model_args.add_argument('--pretrained_model', required=False, default='cyto', type=str, help='model to use')
     model_args.add_argument('--unet', required=False, default=0, type=int, help='run standard unet instead of cellpose flow output')
-    model_args.add_argument('--nclasses',default=None, type=int, help='if running unet, choose 2 or 3; if training omni, choose 4; standard Cellpose uses 3')
-    model_args.add_argument('--kernel_size',default=2, type=int, help='kernel size for maskpool. Starts at 2, higher means more aggressive downsampling.')
+    model_args.add_argument('--nclasses', default=None, type=int, help='number of prediction classes for model (3 for Cellpose, 4 for Omnipose boundary field)')
+    model_args.add_argument('--nchan', default=2, type=int, help='number of channels on which model is trained')
+    model_args.add_argument('--kernel_size', default=2, type=int, help='kernel size for maskpool. Starts at 2, higher means more aggressive downsampling.')
 
 
     # algorithm settings
@@ -336,7 +337,10 @@ def main(omni_CLI=False):
                     model = models.CellposeModel(gpu=gpu, device=device, 
                                                  pretrained_model=cpmodel_path,
                                                  use_torch=True,
-                                                 nclasses=args.nclasses, dim=args.dim, omni=args.omni,
+                                                 nclasses=args.nclasses, 
+                                                 nchan=args.nchan,
+                                                 dim=args.dim, 
+                                                 omni=args.omni,
                                                  net_avg=False)
             else:
                 if args.all_channels:
@@ -344,7 +348,10 @@ def main(omni_CLI=False):
                 model = models.CellposeModel(gpu=gpu, device=device, 
                                              pretrained_model=cpmodel_path,
                                              use_torch=True,
-                                             nclasses=args.nclasses, dim=args.dim, omni=args.omni,
+                                             nclasses=args.nclasses, 
+                                             nchan=args.nchan, 
+                                             dim=args.dim, 
+                                             omni=args.omni,
                                              net_avg=False)
             
 
@@ -436,7 +443,7 @@ def main(omni_CLI=False):
                         nchan = shape[args.channel_axis]
                     else:
                         nchan = min(shape) # This assumes that the channel axis is the smallest 
-                        args.channel_axis = np.where([s==nchan for s in shape])
+                        args.channel_axis = np.argwhere([s==nchan for s in shape])[0][0]
                         logger.info('channel axis detected at position %s, manually specify if incorrect'%args.channel_axis)
                 else: 
                     nchan = 1
@@ -519,6 +526,7 @@ def main(omni_CLI=False):
                                            test_files=image_names_test,
                                            learning_rate=args.learning_rate, 
                                            channels=channels,
+                                           channel_axis=args.channel_axis,
                                            save_path=os.path.realpath(args.dir), 
                                            save_every=args.save_every,
                                            save_each=args.save_each,
