@@ -110,7 +110,8 @@ def main(omni_CLI=False):
     algorithm_args.add_argument('--diam_threshold', required=False, default=12.0, type=float, 
                                 help='cell diameter threshold for upscaling before mask rescontruction, default 12')
     algorithm_args.add_argument('--exclude_on_edges', action='store_true', help='discard masks which touch edges of image')
-    
+    algorithm_args.add_argument('--min_size', default=15, type=float, help='minimum size for masks, helps with debris')
+
     # output settings
     output_args = parser.add_argument_group("output arguments")
     output_args.add_argument('--save_png', action='store_true', help='save masks as png')
@@ -312,7 +313,7 @@ def main(omni_CLI=False):
                                              look_one_level_down=args.look_one_level_down)
             nimg = len(image_names)
                 
-            logger.info('running cellpose on {} images using {} channel(s).'.format(nimg, args.nchan))
+            logger.info('running cellpose on {} image(s) using {} channel(s).'.format(nimg, args.nchan))
             if channels is not None:
                 cstr0 = ['MONO', 'RED', 'GREEN', 'BLUE']
                 cstr1 = ['NONE', 'RED', 'GREEN', 'BLUE']
@@ -393,6 +394,7 @@ def main(omni_CLI=False):
                                 affinity_seg=args.affinity_seg,
                                 anisotropy=args.anisotropy,
                                 verbose=args.verbose,
+                                min_size=args.min_size,
                                 transparency=args.transparency, # RGB flows made in the eval step
                                 model_loaded=True)
                 masks, flows = out[:2]
