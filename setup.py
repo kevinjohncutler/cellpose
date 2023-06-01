@@ -4,8 +4,9 @@ from setuptools import setup
 install_deps = ['numpy>=1.22.4', 'scipy', 'natsort',
                 'tifffile', 'tqdm', 'numba', 
                 'torch>=1.6',
-                'opencv-python-headless', # headless not working with pyinstaller 
-                'fastremap', 'imagecodecs'
+                'opencv-python-headless', # headless not working with pyinstaller?
+                'fastremap', 'imagecodecs',
+                'torchvf@git+https://github.com/kevinjohncutler/torchvf.git'
                 ]
 
 gui_deps = [
