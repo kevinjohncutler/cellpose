@@ -214,7 +214,10 @@ def main(omni_CLI=False):
             logger = logging.getLogger(__name__)
 
         use_gpu = False
-        channels = [args.chan, args.chan2]
+        if args.nchan>1:
+            channels = [args.chan, args.chan2]
+        else:
+            channels = None
 
         # find images
         if len(args.img_filter)>0:
@@ -312,10 +315,13 @@ def main(omni_CLI=False):
                                              look_one_level_down=args.look_one_level_down)
             nimg = len(image_names)
                 
-            cstr0 = ['GRAY', 'RED', 'GREEN', 'BLUE']
-            cstr1 = ['NONE', 'RED', 'GREEN', 'BLUE']
-            logger.info('running cellpose on %d images using chan_to_seg %s and chan (opt) %s'%
-                            (nimg, cstr0[channels[0]], cstr1[channels[1]]))
+
+            logger.info('running cellpose on {} images using {} channels.'.format(nimg, args.nchan))
+            if channels is not None:
+                cstr0 = ['MONO', 'RED', 'GREEN', 'BLUE']
+                cstr1 = ['NONE', 'RED', 'GREEN', 'BLUE']
+                logger.info('channel(s) to seg: {} and  {}'.format(cstr0[channels[0]], cstr1[channels[1]]))
+
             if args.omni:
                 logger.info(f'omni is ON, cluster is {args.cluster}')
              

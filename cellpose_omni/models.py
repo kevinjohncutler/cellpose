@@ -487,10 +487,10 @@ class CellposeModel(UnetModel):
                 
         ostr = ['off', 'on']
         omnistr = ['','_omni'] #toggle by containing omni phrase 
-        self.net_type = 'cellpose_residual_{}_style_{}_concatenation_{}{}_nclasses_{}'.format(ostr[residual_on],
+        self.net_type = 'cellpose_residual_{}_style_{}_concatenation_{}{}_nclasses_{}_nchan_{}'.format(ostr[residual_on],
                                                                                    ostr[style_on],
                                                                                    ostr[concatenation],
-                                                                                   omnistr[omni],self.nclasses) 
+                                                                                   omnistr[omni],self.nclasses,self.nchan) 
         
         if self.torch and gpu:
             self.net = nn.DataParallel(self.net)
@@ -653,25 +653,25 @@ class CellposeModel(UnetModel):
             if omni:
                 models_logger.info(f'using omni model, cluster {cluster}')
         
-
         if isinstance(x, list) or x.squeeze().ndim==5:
             masks, styles, flows = [], [], []
+            dia = diameter[i] if isinstance(diameter, list) or isinstance(diameter, np.ndarray) else diameter
+            rsc = rescale[i] if isinstance(rescale, list) or isinstance(rescale, np.ndarray) else rescale
+            chn = channels if channels is None else channels[i] if (len(channels)==len(x) and (isinstance(channels[i], list) or isinstance(channels[i], np.ndarray)) and len(channels[i])==2) else channels
+            
             tqdm_out = utils.TqdmToLogger(models_logger, level=logging.INFO)
             nimg = len(x)
             iterator = trange(nimg, file=tqdm_out) if nimg>1 else range(nimg)
             for i in iterator:
                 maski, stylei, flowi = self.eval(x[i], 
                                                  batch_size=batch_size, 
-                                                 channels = channels if channels is None else channels[i] if (len(channels)==len(x) and
-                                                                                                              (isinstance(channels[i], list) or 
-                                                                                                               isinstance(channels[i], np.ndarray)) and
-                                                                                                              len(channels[i])==2) else channels, 
+                                                 channels = chn,
                                                  channel_axis=channel_axis, 
                                                  z_axis=z_axis, 
                                                  normalize=normalize, 
                                                  invert=invert,
-                                                 rescale=rescale[i] if isinstance(rescale, list) or isinstance(rescale, np.ndarray) else rescale,
-                                                 diameter=diameter[i] if isinstance(diameter, list) or isinstance(diameter, np.ndarray) else diameter, 
+                                                 rescale=rsc,
+                                                 diameter=dia, 
                                                  do_3D=do_3D, 
                                                  anisotropy=anisotropy, 
                                                  net_avg=net_avg, 
