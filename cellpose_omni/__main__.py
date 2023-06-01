@@ -294,9 +294,6 @@ def main(omni_CLI=False):
             # args.RAdam = False
             
             logger.info('Training omni model. Setting nclasses={}, RAdam={}'.format(args.nclasses,args.RAdam))
-            
-
-            
 
         # EVALUATION BRANCH
         if not args.train and not args.train_size:
@@ -315,8 +312,7 @@ def main(omni_CLI=False):
                                              look_one_level_down=args.look_one_level_down)
             nimg = len(image_names)
                 
-
-            logger.info('running cellpose on {} images using {} channels.'.format(nimg, args.nchan))
+            logger.info('running cellpose on {} images using {} channel(s).'.format(nimg, args.nchan))
             if channels is not None:
                 cstr0 = ['MONO', 'RED', 'GREEN', 'BLUE']
                 cstr1 = ['NONE', 'RED', 'GREEN', 'BLUE']
