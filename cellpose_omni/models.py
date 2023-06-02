@@ -30,11 +30,12 @@ MODEL_DIR = pathlib.Path(_MODEL_DIR_ENV) if _MODEL_DIR_ENV else _MODEL_DIR_DEFAU
 
 if OMNI_INSTALLED:
     import omnipose
-    from omnipose.core import OMNI_MODELS
+    from omnipose.core import MCHN_OMNI_MODELS, MONO_OMNI_MODELS, FCLS_OMNI_MODELS
 else:
-    OMNI_MODELS = []
+    MCHN_OMNI_MODELS, MONO_OMNI_MODELS, FCLS_OMNI_MODELS = [],[],[]
     
-MODEL_NAMES = ['cyto','nuclei','cyto2']+OMNI_MODELS
+MCHN_MODEL_NAMES = ['cyto','nuclei','cyto2'] + MCHN_OMNI_MODELS
+MODEL_NAMES = MCHN_MODEL_NAMES + MONO_OMNI_MODELS
 
 def model_path(model_type, model_index, use_torch):
     torch_str = 'torch' if use_torch else ''

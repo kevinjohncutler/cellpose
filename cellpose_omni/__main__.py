@@ -6,7 +6,7 @@ from natsort import natsorted
 from tqdm import tqdm
 from cellpose_omni import utils, models, io
 
-from .models import MODEL_NAMES
+from .models import MODEL_NAMES, MCHN_MODEL_NAMES, FCLS_OMNI_MODELS
 
 import torch
 
@@ -82,7 +82,7 @@ def main(omni_CLI=False):
     model_args.add_argument('--pretrained_model', required=False, default='cyto', type=str, help='model to use')
     model_args.add_argument('--unet', required=False, default=0, type=int, help='run standard unet instead of cellpose flow output')
     model_args.add_argument('--nclasses', default=None, type=int, help='number of prediction classes for model (3 for Cellpose, 4 for Omnipose boundary field)')
-    model_args.add_argument('--nchan', default=2, type=int, help='number of channels on which model is trained')
+    model_args.add_argument('--nchan', default=None, type=int, help='number of channels on which model is trained')
     model_args.add_argument('--kernel_size', default=2, type=int, help='kernel size for maskpool. Starts at 2, higher means more aggressive downsampling.')
 
 
@@ -215,10 +215,7 @@ def main(omni_CLI=False):
             logger = logging.getLogger(__name__)
 
         use_gpu = False
-        if args.nchan>1:
-            channels = [args.chan, args.chan2]
-        else:
-            channels = None
+
 
         # find images
         if len(args.img_filter)>0:
@@ -245,6 +242,24 @@ def main(omni_CLI=False):
         #inelegant but necessary workaround for models that I provide without multiple models
         # long term should just check to see if they exist locally or on the server, disable model averaging if not found 
         bacterial = ('bact' in args.pretrained_model) or ('worm' in args.pretrained_model) 
+
+        # set nchan for builtin models
+        if args.pretrained_model in MCHN_MODEL_NAMES:
+            if args.nchan is not None:
+                logger.info('This pretrained model uses 2 channels, setting nchan=2')
+            args.nchan = 2
+
+        # Handle channel assignemnt for 2 vs 1 channels
+        # For >2 channels, use None. 
+        if args.nchan>1:
+            channels = [args.chan, args.chan2]
+        else:
+            channels = None
+        
+        # Pretrained omni models originally had four prediciton classes 
+        if args.pretrained_model in FCLS_OMNI_MODELS:
+            logger.info('This model uses boundary field, setting nclasses=4.')
+            args.nclasses = 4
         
         # force omni on for those models, but don't toggle it off if manually specified via --omni or by invoking python -m omnipose
         if 'omni' in args.pretrained_model or omni_CLI:
@@ -274,17 +289,6 @@ def main(omni_CLI=False):
                 logger.info('omni set to false.')
                 args.omni = False
 
-        # # For now, omni version is not compatible with 3D. WIP. <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-        # if args.omni and args.do_3D:
-        #     logger.info('omni not yet compatible with 3D segmentation.')
-        #     confirm = confirm_prompt('Continue with omni set to false?')
-        #     if not confirm:
-        #         exit()
-        #     else:
-        #         logger.info('omni set to false.')
-        #         args.omni = False
-
-        # omni model needs 4 classes, but all the training regenerates this from scratch and just ignores saved CP flows. 
         if args.omni and args.train:
             # assume instance segmentation unless otherwise specified 
             if args.nclasses is None:
@@ -295,6 +299,7 @@ def main(omni_CLI=False):
             # args.RAdam = False
             
             logger.info('Training omni model. Setting nclasses={}, RAdam={}'.format(args.nclasses,args.RAdam))
+
 
         # EVALUATION BRANCH
         if not args.train and not args.train_size:
@@ -428,7 +433,6 @@ def main(omni_CLI=False):
                     szmean = 0. #bacterial models are not rescaled 
             else:
                 cpmodel_path = os.fspath(args.pretrained_model)
-                # szmean = 30.
                 szmean = args.diameter # respect user defined, defaults to 30
                 
             test_dir = None if len(args.test_dir)==0 else args.test_dir
@@ -442,7 +446,7 @@ def main(omni_CLI=False):
                 dim = img.ndim 
                
                 shape = img.shape
-                if args.dim != dim: # user dim allows us to detect 3D images with or with out channel axis
+                if args.dim != dim: # user dim allows us to detect 3D images with or without channel axis
                     if args.channel_axis is not None:
                         nchan = shape[args.channel_axis]
                     else:
@@ -457,6 +461,13 @@ def main(omni_CLI=False):
                 # perhaps a vestige of cyto2 with nuclei+membrane as a subset    
                 nchan = 2
 
+            rstr = 'Be sure to use --nchan {} when running the model.'.format(nchan)
+            if args.nchan is None:
+                logger.info('setting nchan to {}. '.format(nchan) + rstr)
+            elif args.nchan != nchan:
+                logger.warning('provided nchan {} does not match {} data channels. Using the latter. '.format(args.nchan,nchan) + rstr)
+            
+            args.nchan = nchan
             
             # model path
             if not os.path.exists(cpmodel_path):
@@ -499,7 +510,7 @@ def main(omni_CLI=False):
                                         style_on=args.style_on,
                                         concatenation=args.concatenation,
                                         nclasses=args.nclasses,
-                                        nchan=nchan)
+                                        nchan=args.nchan)
             else:
                 model = models.CellposeModel(device=device,
                                              gpu=gpu, # why was this not being passed in befrore?
@@ -509,7 +520,7 @@ def main(omni_CLI=False):
                                              residual_on=args.residual_on,
                                              style_on=args.style_on,
                                              concatenation=args.concatenation,
-                                             nchan=nchan,
+                                             nchan=args.nchan,
                                              nclasses=args.nclasses,
                                              dim=args.dim, # init to 2D pr 3D
                                              omni=args.omni,
