@@ -824,7 +824,12 @@ def pad_image_ND(img0, div=16, extra=1, dim=2):
     
     emptypad = tuple([[0,0]]*(img0.ndim-dim))
     pads = emptypad+tuple(np.stack((pad1,pad2),axis=1))
-    I = np.pad(img0,pads, mode='reflect') # changed from 'constant' - avoids a lot of edge artifacts!!!
+    
+    # changed from 'constant' - avoids a lot of edge artifacts!!!
+    # any option that extends the data naturally will do... reflect seems to be the best 
+    mode = 'reflect'
+    I = np.pad(img0,pads, mode=mode)
+    
 
     shape = img0.shape[-dim:] 
     subs = [np.arange(pad1[k],pad1[k]+shape[k]) for k in range(dim)]

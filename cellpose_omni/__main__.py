@@ -251,7 +251,7 @@ def main(omni_CLI=False):
 
         # Handle channel assignemnt for 2 vs 1 channels
         # For >2 channels, use None. 
-        if args.nchan>1:
+        if args.nchan is not None and args.nchan>1:
             channels = [args.chan, args.chan2]
         else:
             channels = None
@@ -455,6 +455,7 @@ def main(omni_CLI=False):
                         logger.info('channel axis detected at position %s, manually specify if incorrect'%args.channel_axis)
                 else: 
                     nchan = 1
+                    args.channel_axis = 0 
                 channels = None 
             else: 
                 # defaulting to 2 channels is a strange choice

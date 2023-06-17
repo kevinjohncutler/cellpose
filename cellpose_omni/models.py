@@ -658,7 +658,9 @@ class CellposeModel(UnetModel):
             masks, styles, flows = [], [], []
             dia = diameter[i] if isinstance(diameter, list) or isinstance(diameter, np.ndarray) else diameter
             rsc = rescale[i] if isinstance(rescale, list) or isinstance(rescale, np.ndarray) else rescale
-            chn = channels if channels is None else channels[i] if (len(channels)==len(x) and (isinstance(channels[i], list) or isinstance(channels[i], np.ndarray)) and len(channels[i])==2) else channels
+            chn = channels if channels is None else channels[i] if (len(channels)==len(x) and 
+                                                                    (isinstance(channels[i], list) or isinstance(channels[i], np.ndarray)) and
+                                                                    len(channels[i])==2) else channels
             
             tqdm_out = utils.TqdmToLogger(models_logger, level=logging.INFO)
             nimg = len(x)

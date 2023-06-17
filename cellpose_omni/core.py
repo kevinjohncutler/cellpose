@@ -10,10 +10,8 @@ from . import transforms, dynamics, utils, metrics, io
 
 import omnipose
 
-from torchvf.losses import ivp_loss
-from multiprocessing import Pool, cpu_count
-from functools import partial
-
+# from multiprocessing import Pool, cpu_count
+# from functools import partial
 # from focal_loss.focal_loss import FocalLoss
 
 
@@ -896,13 +894,13 @@ class UnetModel():
             if self.torch:
                 self.criterion  = nn.MSELoss(reduction='mean')
                 self.criterion2 = nn.BCEWithLogitsLoss(reduction='mean')
-                self.criterion6 = MaskedLoss()
-                self.criterion11 = DerivativeLoss()
-                self.criterion12 = WeightedLoss()
-                self.criterion14 = ArcCosDotLoss()
-                self.criterion15 = NormLoss()
-                self.criterion16 = DivergenceLoss()
-                self.criterion0 = ivp_loss.IVPLoss(dx=0.2,n_steps=2,device=self.device,mode='nearest_batched')
+                self.criterion1 = omnipose.loss.SSL_Norm_MSE()
+                self.criterion3 = omnipose.loss.SSL_Norm()
+                self.criterion12 = omnipose.loss.WeightedMSELoss()
+                self.criterion15 = omnipose.loss.NormLoss()
+                self.criterion17 = omnipose.loss.SineSquaredLoss()
+                # self.criterion0 = ivp_loss.IVPLoss(dx=0.2, # consider increasing t0 np.sqrt(2)/5 for diagonals 
+                self.criterion0 = omnipose.loss.EulerLoss(self.device)
                 # self.ivp_loss =  ivp_loss.IVPLoss(dx=0.25,n_steps=8,device=self)
                 # self.criterion17 = nn.SoftmaxCrossEntropyLoss(axis=1)
                 # self.criterion17 = FocalLoss()
@@ -1015,7 +1013,7 @@ class UnetModel():
         while len(inds_all) < n_epochs * nimg_per_epoch:
             rperm = np.random.permutation(nimg)
             inds_all = np.hstack((inds_all, rperm))
-        
+                
         if self.autocast:
             self.scaler = GradScaler()
         
@@ -1031,10 +1029,10 @@ class UnetModel():
                       'dim': self.dim,
                       'nchan': self.nchan,
                       'nclasses': self.nclasses,
-                      'device': self.device,
+                      'device': self.device if not ARM else torch.device('cpu'), # MPS slower than cpu for flow
                       'affinity_field': affinity_field
                      }
-            torch.multiprocessing.set_start_method('spawn')
+            # torch.multiprocessing.set_start_method('spawn')
             
             training_set = omnipose.dataset(train_data, train_labels, train_links, **kwargs)       
 
@@ -1043,23 +1041,29 @@ class UnetModel():
             
             sampler = torch.utils.data.sampler.BatchSampler(torch.utils.data.sampler.RandomSampler(training_set),
                                                             batch_size=batch_size,
-                                                            drop_last=False)
-            params = {'batch_size': batch_size,
+                                                            drop_last=False) 
+            
+            # consider making drop_last true... it might still be a lot faster
+            # or maybe find a way to make the last several bathces a bit smaller but still large to balance load 
+
+            print('num_workers',num_workers,'batch_size', batch_size)
+            
+            # params = {'batch_size': batch_size,
+            params = {'batch_size': 1, # this batch size is more like how many worker batches to aggregate 
                       'shuffle': False, # use sampler instead
                       'collate_fn': training_set.collate_fn,
                       'worker_init_fn': training_set.worker_init_fn,
-                      'pin_memory': False, # was true 
+                      'pin_memory': False, # only useful for CPU tensors
                       'num_workers': num_workers, # this probably makes sense only for large batches 
                       'sampler': sampler,
                       'persistent_workers': True if num_workers>0 else False,
-                      'drop_last': True, # this seems to help quite a lot, should print out info for users to know how much is left out 
-                      # 'prefetch_factor': 1 # seems to have no effect 
+                      'multiprocessing_context': 'spawn',
+                      'prefetch_factor': batch_size
                      }
-            
-            # drop last has an outsize effect, much more than the % dropped, and it is most noticable on dual GPU. I think this may be
-            # due to overhead etc. and it is much better 
-            
-            core_logger.info('>>>> Using torch dataloader. Can take a couple min to initialize. Using {} workers.'.format(num_workers))
+
+            core_logger.info((">>>> Using torch dataloader. "
+                              "Can take a couple min to initialize. "
+                              "Using {} workers.").format(num_workers))
             
             train_loader = torch.utils.data.DataLoader(training_set, **params)
             
@@ -1085,6 +1089,7 @@ class UnetModel():
         # dist = train_labels
         
         for iepoch in range(self.n_epochs):    
+            self.iepoch = iepoch
             if SGD:
                 self._set_learning_rate(self.learning_rate[iepoch])
             
@@ -1092,24 +1097,28 @@ class UnetModel():
             datatime = []
             steptime = []
             if dataloader:
-                for batch_data, batch_labels, batch_idx in train_loader:
+                # for batch_data, batch_labels, batch_idx in train_loader:
+                for batch_idx, (batch_data, batch_labels, batch_inds) in enumerate(train_loader):
+                # for batch_inds in train_loader.batch_sampler:
+                #     batch_data, batch_labels = train_loader(batch_inds)
                     shape = batch_data.shape
 
                     tic = time.time()
 
                     # print('\t Batch number',batch_idx)
+                    # print('yoyoyo',batch_data.shape,batch_inds)
 
                     nbatch = len(batch_data)
                     dt = tic-toc
                     datatime += [dt]
                     if timing:
-                        print('\t Dataloading time (dataloader): {:.2f}'.format(dt))
+                        print('\t Dataloading time  (dataloader): {:.2f}'.format(dt))
                     train_loss = self._train_step(batch_data, batch_labels)
 
                     dt = time.time()-tic
                     steptime += [dt] 
                     if timing:
-                        print('\t Step time: {:.2f}, batch size {}'.format(dt,len(batch_data)))
+                        print('\t Step time: {:.2f}, batch size {}'.format(dt,nbatch))
 
                     lsum += train_loss
                     nsum += nbatch 
@@ -1158,7 +1167,7 @@ class UnetModel():
                     dt = time.time()-tic
                     datatime += [dt]
                     if timing:
-                        print('\t Dataloading time (Cellpose): {:.2f}'.format(dt))
+                        print('\t Dataloading time (manual batching): {:.2f}'.format(dt))
                     nbatch = len(imgi) 
 
                     if self.unet and lbl.shape[1]>1 and rescale:
@@ -1226,6 +1235,7 @@ class UnetModel():
                     ("Train epoch: {} | "
                     "Time: {:.2f}min | "
                     "last epoch: {:.2f}s | "
+                     # "batch size: {} | "
                     "<sec/epoch>: {:.2f}s | "
                     "<sec/batch>: {:.2f}s | "
                     "<Batch Loss>: {:.6f} | "
@@ -1233,6 +1243,7 @@ class UnetModel():
                     format(iepoch, # epoch index 
                            (tic-t0) / 60, # absolute time spent in minutes 
                            0 if iepoch==iepoch0 else (tic-toc) / (iepoch-iepoch0), # time spent in this epoch 
+                           # nbatch,
                            # (tic-t0) / (iepoch+1), # average time per epoch 
                            0 if iepoch==iepoch0 else np.mean(np.diff(epochtime[max(0,iepoch-3):max(1,iepoch)])),
                            np.mean(datatime[-3:]), # average time spent loading fata for last 3 epochs 
@@ -1244,7 +1255,7 @@ class UnetModel():
             lsum, nsum = 0, 0
 
             if save_path is not None:
-                if iepoch==self.n_epochs-1 or iepoch%save_every==0:
+                if iepoch==self.n_epochs-1 or iepoch%save_every==0 or (self.n_epochs-iepoch)<10:
                     # save model at the end
                     if save_each: #separate files as model progresses 
                         if netstr is None:
@@ -1255,7 +1266,9 @@ class UnetModel():
                             file_name = '{}_{}'.format(netstr, 'epoch_'+str(iepoch))
                     else:
                         if netstr is None:
-                            file_name = '{}_{}_{}'.format(self.net_type, file_label, d.strftime("%Y_%m_%d_%H_%M_%S.%f"))
+                            file_name = '{}_{}_{}'.format(self.net_type, 
+                                                          file_label, 
+                                                          d.strftime("%Y_%m_%d_%H_%M_%S.%f"))
                         else:
                             file_name = netstr
                     file_name = os.path.join(file_path, file_name)
@@ -1278,109 +1291,3 @@ class UnetModel():
 
         return file_name
 
-class DerivativeLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self,y,Y,w,mask):
-        # y is awlays nbatch x dim x shape, shape is Ly x Lx, Lt x Ly x Lx, or Lz x Ly x Lx. 
-        # so y[0] grabs one example
-        # axes = [k for k in range(len(y[0]))]     
-        # print('shape',y.shape,y[0].shape)
-        dim = y.shape[1]
-        dims = [k for k in range(-dim,0)]
-        # print('dims',dim,dims)
-        dy = torch.stack(torch.gradient(y,dim=dims))
-        dY = torch.stack(torch.gradient(Y,dim=dims))
-        sel = torch.where(mask) # read that masked selection could be causing this 
-        return torch.mean(torch.sum(torch.square((dy-dY)/5.),axis=0)[sel]*w[sel])    
-    
-class WeightedLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self,y,Y,w):
-        diff = (y-Y)/5.
-        return torch.mean(torch.square(diff)*w)
-
-class MaskedLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self,y,Y,mask):
-        diff = (y-Y)/5.
-        sel = torch.where(mask).detach() # read that masked selection could be causing this 
-        return torch.mean(torch.square(diff[sel]))
-        
-# I suspect that, of all the loss functions, this one would be the one that suffers most from 16 bit precision 
-class ArcCosDotLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self,x,y,w,mask):
-        eps = 1e-12
-        denom = torch.multiply(torch_norm(x,dim=1),torch_norm(y,dim=1))+eps
-        dot = torch.sum(torch.stack([x[:,k]*y[:,k] for k in range(x.shape[1])],axis=1),axis=1)
-        phasediff = torch.acos(torch.clip(dot/denom,-0.999999,0.999999))/3.141549
-        # sel = torch.where(mask.detach()) # read that masked selection could be causing this 
-        
-        # return torch.mean((torch.square(phasediff[sel]))*w[sel])
-        return torch.mean((torch.square(phasediff))*w)
-    
-    
-class NormLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self,y,Y,w,mask):
-        ny = torch_norm(y,dim=1,keepdim=False)/5.
-        nY = torch_norm(Y,dim=1,keepdim=False)/5.
-        diff = (ny-nY)
-        # masked selection causes memory leak on MPS
-        # sel = torch.where(mask)
-        # return torch.mean(torch.square(diff[sel])*w[sel])
-        return torch.mean(torch.square(diff)*w)
-        
-
-def torch_norm(a,dim=1,keepdim=False):
-    if ARM: 
-        #torch.linalg.norm not implemented on MPS yet
-        # this is the fastest I have tested but still slow in comparison 
-        return (a*a).sum(dim=dim,keepdim=keepdim).sqrt()
-    else:
-        return torch.linalg.norm(a,dim=dim,keepdim=keepdim)
-
-class DivergenceLoss(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-    def forward(self,y,Y,mask=None):
-        divy = divergence(y)
-        divY = divergence(Y)
-        if mask is None:
-            mask = torch.abs(divY)>1
-        diff = (divY - divy)/5.
-        sel = torch.where(mask) # read that masked selection could be causing this 
-        # return torch.mean(torch.square(torch.masked_select(diff,mask>0)))
-        # return torch.mean(torch.square(diff))
-        r = diff[mask>0]
-        ret = torch.mean(torch.square(r))
-        del diff, mask, r
-        
-        return ret
-        
-        # return torch.mean(torch.square(diff[sel]))
-
-def divergence(y):
-    axes = [k for k in range(len(y[0]))] #note that this only works when there are at least two images in batch 
-    dim = y.shape[1]
-    # print('divy',y.shape,y[:,0].shape)
-
-    # return torch.stack([torch.gradient(y[:,-k],dim=k)[0] for k in dims]).sum(dim=0)
-    return torch.stack([torch.gradient(y[:,ax],dim=ax-dim)[0] for ax in axes]).sum(dim=0)
-    
-    # k should be 0,1 and dim should be -2,-1
-    # so ax-dim, in 3D axes = 0,1,2 and ax-dim is 0-3 = -3, 1-3 = -2, 2-3 = -1
-
-# averaging the mean across each 
-def mean_of_means(x):
-    return torch.mean(torch.mean(x, axis=(-2,-1)))
