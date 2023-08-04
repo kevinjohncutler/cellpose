@@ -6,7 +6,8 @@ install_deps = ['numpy>=1.22.4', 'scipy', 'natsort',
                 'torch>=1.6',
                 'opencv-python-headless', # headless not working with pyinstaller?
                 'fastremap', 'imagecodecs',
-                'torchvf@git+https://github.com/kevinjohncutler/torchvf.git'
+                # 'torchvf@git+https://github.com/kevinjohncutler/torchvf.git'
+                'torchvf'
                 ]
 
 gui_deps = [
