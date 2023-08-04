@@ -566,7 +566,7 @@ def reshape(data, channels=[0,0], chan_first=False, channel_axis=0):
             # data = data.mean(axis=-1, keepdims=True) # why do this? Seems like it would be smashing channels together instead of taking the 0th one. 
             data = data.mean(axis=channel_axis, keepdims=True) # also had a big bug: 3D volumes get squashed to 2D along x axis!!! Assumptions bad. 
             
-            data = np.concatenate((data, np.zeros_like(data)), axis=-1) # forces images to always have 2 channels, possibly bad for multidimensional pytorch limitations 
+            data = np.concatenate((data, np.zeros_like(data)), axis=-1) # forces images to always have 2 channels, possibly bad for multidimensional
         else:
             chanid = [channels[0]-1] # oh so [0,0] would do a mean and [1,0] would actually take the first channel?
             if channels[1] > 0:

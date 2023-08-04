@@ -74,10 +74,12 @@ if OMNI_INSTALLED:
     
 
     from omnipose.utils import sinebow
-    import colour
+    # from colour import rgb2hex
+    from matplotlib.colors import rgb2hex
+
     N = 29
     c = sinebow(N)
-    COLORS = [colour.rgb2hex(c[i][:3]) for i in range(1,N+1)] #can only do RBG, not RGBA for stylesheet
+    COLORS = [rgb2hex(c[i][:3]) for i in range(1,N+1)] #can only do RBG, not RGBA for stylesheet
 
 else:
     PRELOAD_IMAGE = None # could make this once from cyto 

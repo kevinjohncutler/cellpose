@@ -515,7 +515,7 @@ class CellposeModel(UnetModel):
     def eval(self, x, batch_size=8, channels=None, channel_axis=None, 
              z_axis=None, normalize=True, invert=False, 
              rescale=None, diameter=None, do_3D=False, anisotropy=None, net_avg=True, 
-             augment=False, tile=True, tile_overlap=0.1,
+             augment=False, tile=True, tile_overlap=0.1, bsize=224,
              resample=True, interp=True, cluster=False, boundary_seg=False, affinity_seg=False,
              flow_threshold=0.4, mask_threshold=0.0, diam_threshold=12., niter=None,
              cellprob_threshold=None, dist_threshold=None, flow_factor=5.0,
@@ -656,16 +656,20 @@ class CellposeModel(UnetModel):
         
         if isinstance(x, list) or x.squeeze().ndim==5:
             masks, styles, flows = [], [], []
-            dia = diameter[i] if isinstance(diameter, list) or isinstance(diameter, np.ndarray) else diameter
-            rsc = rescale[i] if isinstance(rescale, list) or isinstance(rescale, np.ndarray) else rescale
-            chn = channels if channels is None else channels[i] if (len(channels)==len(x) and 
-                                                                    (isinstance(channels[i], list) or isinstance(channels[i], np.ndarray)) and
-                                                                    len(channels[i])==2) else channels
-            
+
             tqdm_out = utils.TqdmToLogger(models_logger, level=logging.INFO)
             nimg = len(x)
             iterator = trange(nimg, file=tqdm_out) if nimg>1 else range(nimg)
             for i in iterator:
+                dia = diameter[i] if isinstance(diameter, list) or isinstance(diameter, np.ndarray) else diameter
+                rsc = rescale[i] if isinstance(rescale, list) or isinstance(rescale, np.ndarray) else rescale
+                chn = channels if channels is None else channels[i] if (len(channels)==len(x) and 
+                                                                        (isinstance(channels[i], list) 
+                                                                         or isinstance(channels[i], np.ndarray)) and
+                                                                        len(channels[i])==2) else channels
+
+
+                
                 maski, stylei, flowi = self.eval(x[i], 
                                                  batch_size=batch_size, 
                                                  channels = chn,
@@ -681,6 +685,7 @@ class CellposeModel(UnetModel):
                                                  augment=augment, 
                                                  tile=tile, 
                                                  tile_overlap=tile_overlap,
+                                                 bsize=bsize,
                                                  resample=resample, 
                                                  interp=interp,
                                                  cluster=cluster,
@@ -742,6 +747,7 @@ class CellposeModel(UnetModel):
                                                                                       augment=augment, 
                                                                                       tile=tile, 
                                                                                       tile_overlap=tile_overlap,
+                                                                                      bsize=bsize,
                                                                                       mask_threshold=mask_threshold, 
                                                                                       diam_threshold=diam_threshold,
                                                                                       flow_threshold=flow_threshold,
@@ -779,7 +785,7 @@ class CellposeModel(UnetModel):
 
     def _run_cp(self, x, compute_masks=True, normalize=True, invert=False,
                 rescale=1.0, net_avg=True, resample=True,
-                augment=False, tile=True, tile_overlap=0.1,
+                augment=False, tile=True, tile_overlap=0.1, bsize=224,
                 mask_threshold=0.0, diam_threshold=12., flow_threshold=0.4, niter=None, flow_factor=5.0, min_size=15,
                 interp=True, cluster=False, boundary_seg=False, affinity_seg=False,
                 anisotropy=1.0, do_3D=False, stitch_threshold=0.0,
@@ -853,7 +859,8 @@ class CellposeModel(UnetModel):
                         
                 yf, style = self._run_nets(img, net_avg=net_avg,
                                            augment=augment, tile=tile,
-                                           tile_overlap=tile_overlap)
+                                           tile_overlap=tile_overlap, 
+                                           bsize=bsize)
                 # unpadding 
                 yf = yf[unpad+(Ellipsis,)]
                 

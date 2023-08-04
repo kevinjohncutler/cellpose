@@ -18,7 +18,7 @@ except:
     SKIMAGE_ENABLED = False
 
 try:
-    from omnipose.utils import sinebow
+    from omnipose.plot import sinebow
     import ncolor
     OMNI_INSTALLED = True
 except:
@@ -111,10 +111,13 @@ def show_segmentation(fig, img, maski, flowi, bdi=None, channels=None, file_name
     if channels is None:
         channels = [0,0]
     img0 = img.copy()
-    img0 = transforms.reshape(img0,channels=channels) # this makes sure channel axis is last 
     
-    if img0.shape[0] < 4:
+    # this line really screws with the colors
+    # img0 = transforms.reshape(img0,channels=channels) # this makes sure channel axis is last 
+    
+    if img0.shape[0] ==3 and channel_axis!=-1:
         img0 = np.transpose(img0, (1,2,0))
+        
     if img0.shape[-1] < 3 or img0.ndim < 3:
         img0 = image_to_rgb(img0, channels=channels, omni=omni)
 
@@ -135,12 +138,12 @@ def show_segmentation(fig, img, maski, flowi, bdi=None, channels=None, file_name
     
     # the mask_overlay function changes colors (preserves only hue I think). The label2rgb function from
     # skimage.color works really well. 
+    
     if omni and SKIMAGE_ENABLED and OMNI_INSTALLED:
         m,n = ncolor.label(maski,max_depth=20,return_n=True)
         c = sinebow(n)
         colors = np.array(list(c.values()))[1:]
         img1 = rescale(color.rgb2gray(img1))
-
         overlay = color.label2rgb(m,img1,colors,
                                   bg_label=0,
                                   alpha=np.stack([((m>0)*1.+outlines*0.75)/3]*3,axis=-1))
