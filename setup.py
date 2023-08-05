@@ -7,7 +7,7 @@ install_deps = ['numpy>=1.22.4', 'scipy', 'natsort',
                 'opencv-python-headless', # headless not working with pyinstaller?
                 'fastremap', 'imagecodecs',
                 # 'torchvf@git+https://github.com/kevinjohncutler/torchvf.git'
-                'torchvf'
+                'torchvf',
                 ]
 
 gui_deps = [
@@ -72,12 +72,12 @@ setup(
     ],
     packages=setuptools.find_packages(),
     use_scm_version=True,
-    install_requires = install_deps,
+    install_requires = install_deps+omni_deps,
     tests_require=[
       'pytest'
     ],
     extras_require = {
-      'omni': omni_deps,
+      # 'omni': omni_deps, force omni deps 
       'docs': docs_deps,
       'gui': gui_deps,
       'all': gui_deps + omni_deps,
