@@ -416,7 +416,7 @@ class UnetModel():
         else:  
             for j in range(len(self.pretrained_model)):
                 
-                if self.torch and self.gpu:
+                if self.torch:
                     net = self.net.module
                 else:
                     net = self.net
